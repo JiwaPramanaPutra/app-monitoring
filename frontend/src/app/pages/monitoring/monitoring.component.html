@@ -1,0 +1,791 @@
+<div id="app-shell" (click)="closeDropdown()">
+  <app-sidebar></app-sidebar>
+
+  <div class="main">
+    <!-- Header -->
+    <div class="page-header"
+      style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+      <div>
+        <h2 style="font-size:16px;">Monitoring Jaringan</h2>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">
+          {{ selectedSite }} · 1 router · {{ filteredDevices.length }} perangkat
+          <span style="margin:0 6px;color:var(--border);">|</span>
+          <span style="color:var(--ink);">Poltekkes Kemenkes Semarang</span>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <div
+          style="background:var(--paper);border:0.5px solid var(--border);border-radius:6px;padding:3px 8px;font-size:11px;color:var(--ink);display:inline-flex;align-items:center;gap:6px;">
+          <span style="color:var(--muted);">Peran Aktif:</span>
+          <span style="color:var(--primary);font-weight:600;">{{ currentRole }}</span>
+        </div>
+
+        <button *ngIf="!isClient" type="button" class="btn" (click)="openAddDeviceModal()"
+          style="padding:7px 14px;font-size:12px;display:flex;align-items:center;gap:6px;">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="6" y1="1" x2="6" y2="11" />
+            <line x1="1" y1="6" x2="11" y2="6" />
+          </svg>
+          Tambah Perangkat
+        </button>
+      </div>
+    </div>
+
+    <!-- Active Filter Banner (e.g. from Dashboard click "Perangkat Down") -->
+    <div *ngIf="statusFilter === 'down' || statusFilter === 'offline'"
+      style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;margin-bottom:12px;background:#FEE2E2;border:1px solid #FECACA;border-radius:8px;font-size:12px;color:#991B1B;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="width:8px;height:8px;border-radius:50%;background:#DC2626;display:inline-block;"></span>
+        <span>Menampilkan filter: <strong>Perangkat Down / Offline</strong> ({{ filteredDevices.length }} perangkat
+          ditemukan)</span>
+      </div>
+      <button type="button" (click)="clearStatusFilter()"
+        style="background:#fff;border:0.5px solid #FECACA;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer;color:#991B1B;font-weight:500;">
+        ✕ Reset Filter
+      </button>
+    </div>
+
+    <!-- Site tabs -->
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;overflow-x:auto;padding-bottom:2px;">
+      <button *ngFor="let site of sites" (click)="selectSite(site)" [class.btn]="selectedSite === site"
+        [class.btn-outline]="selectedSite !== site" class="btn"
+        style="padding:6px 14px;font-size:12px;white-space:nowrap;">
+        {{ site }}
+      </button>
+    </div>
+
+    <!-- Router Card -->
+    <div class="card" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-size:13px;font-weight:500;">Mikrotik — router utama <span
+            style="font-weight:400;color:var(--muted);">/ ether1-WAN ({{ selectedSite }})</span></div>
+        <div class="mono" style="font-size:11px;color:#6B7280;">10.10.1.1</div>
+      </div>
+      <svg width="100%" height="90" viewBox="0 0 480 90" preserveAspectRatio="none">
+        <g stroke="#E5E7EB" stroke-width="1">
+          <line x1="0" y1="0" x2="480" y2="0" />
+          <line x1="0" y1="22" x2="480" y2="22" />
+          <line x1="0" y1="45" x2="480" y2="45" />
+          <line x1="0" y1="67" x2="480" y2="67" />
+          <line x1="0" y1="89" x2="480" y2="89" />
+        </g>
+        <g>
+          <rect x="330" y="55" width="4" height="34" fill="#3E3A6B" />
+          <rect x="336" y="40" width="4" height="49" fill="#3E3A6B" />
+          <rect x="342" y="18" width="4" height="71" fill="#3E3A6B" />
+          <rect x="348" y="33" width="4" height="56" fill="#3E3A6B" />
+          <rect x="354" y="10" width="4" height="79" fill="#3E3A6B" />
+          <rect x="360" y="30" width="4" height="59" fill="#3E3A6B" />
+          <rect x="366" y="23" width="4" height="66" fill="#3E3A6B" />
+          <rect x="372" y="37" width="4" height="52" fill="#3E3A6B" />
+          <rect x="378" y="15" width="4" height="74" fill="#3E3A6B" />
+        </g>
+        <g>
+          <rect x="334" y="62" width="4" height="27" fill="#C4442E" />
+          <rect x="340" y="50" width="4" height="39" fill="#C4442E" />
+          <rect x="346" y="33" width="4" height="56" fill="#C4442E" />
+          <rect x="352" y="55" width="4" height="34" fill="#C4442E" />
+          <rect x="358" y="26" width="4" height="63" fill="#C4442E" />
+          <rect x="364" y="48" width="4" height="41" fill="#C4442E" />
+          <rect x="370" y="41" width="4" height="48" fill="#C4442E" />
+          <rect x="376" y="59" width="4" height="30" fill="#C4442E" />
+          <rect x="382" y="30" width="4" height="59" fill="#C4442E" />
+        </g>
+      </svg>
+      <div style="display:flex;gap:16px;margin-top:8px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;background:#3E3A6B;display:inline-block;"></span>
+          <span style="font-size:11px;">Tx</span>
+          <span class="mono" style="font-size:11px;">10.9 Mbps</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="width:8px;height:8px;background:#C4442E;display:inline-block;"></span>
+          <span style="font-size:11px;">Rx</span>
+          <span class="mono" style="font-size:11px;">104.1 Mbps</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Devices Table Card -->
+    <div class="card" style="padding:0;overflow:visible;position:relative;margin-bottom:14px;">
+      <div
+        style="padding:10px 16px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:12px;font-weight:500;">
+          Daftar Access Point & Switch ({{ selectedSite }})
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <div style="position:relative;">
+            <input type="text" [(ngModel)]="searchText" placeholder="Cari nama, IP, MAC, ruangan..."
+              style="border:0.5px solid var(--border);border-radius:6px;padding:5px 24px 5px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;width:200px;">
+            <button *ngIf="searchText" (click)="searchText = ''"
+              style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--muted);font-size:12px;padding:0;">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Tipe</th>
+              <th>Nama Perangkat</th>
+              <th>MAC Address</th>
+              <th>IP Address</th>
+              <th>Client</th>
+              <th>Sinyal</th>
+              <th>Gedung</th>
+              <th>Lantai</th>
+              <th>Ruangan</th>
+              <th style="text-align:right;padding-right:16px;" *ngIf="!isClient">Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngIf="pagedDevices.length === 0">
+              <td colspan="11" style="text-align:center;padding:32px;color:var(--muted);font-size:12.5px;">
+                Tidak ada perangkat yang sesuai dengan filter.
+              </td>
+            </tr>
+            <tr *ngFor="let device of pagedDevices" [style.background]="device.status === 'Offline' ? '#FBEEEC' : ''">
+              <td>
+                <span class="dot" [style.background]="device.status === 'Online' ? '#5B7A52' : '#C4442E'"></span>
+                {{ device.status }}
+              </td>
+              <td>{{ device.type }}</td>
+              <td>
+                <div (click)="openDeviceDetail(device)"
+                  style="font-weight:500;cursor:pointer;color:var(--ink);transition:color 0.15s ease;"
+                  class="device-name-link" title="Klik untuk melihat detail perangkat">
+                  {{ device.name }}
+                </div>
+                <div style="font-size:10px;color:var(--muted);" *ngIf="device.brand">{{ device.brand }} {{ device.model
+                  }}</div>
+              </td>
+              <td class="mono" style="font-size:11px;">{{ device.mac }}</td>
+              <td class="mono" style="font-size:11.5px;">{{ device.ip }}</td>
+              <td>{{ device.client }}</td>
+              <td [style.color]="device.status === 'Online' ? '#5B7A52' : '#C4442E'" style="font-weight:500;">{{
+                device.signal }}</td>
+              <td>{{ device.gedung }}</td>
+              <td>{{ device.lantai }}</td>
+              <td>{{ device.ruangan }}</td>
+              <td style="text-align:right;padding-right:16px;" *ngIf="!isClient">
+                <div style="position:relative;display:inline-block;">
+                  <button type="button" (click)="toggleDropdown(device.id, $event)"
+                    style="background:transparent;border:0.5px solid var(--border);border-radius:6px;width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);"
+                    title="Menu Aksi">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <circle cx="12" cy="5" r="2" />
+                      <circle cx="12" cy="12" r="2" />
+                      <circle cx="12" cy="19" r="2" />
+                    </svg>
+                  </button>
+
+                  <!-- Dropdown Action Menu -->
+                  <div *ngIf="activeDropdown === device.id"
+                    style="position:absolute;right:0;top:32px;z-index:100;background:#fff;border:0.5px solid var(--border);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,0.12);min-width:180px;padding:5px 0;">
+
+                    <button type="button" (click)="openDeviceDetail(device)"
+                      style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;background:transparent;border:none;cursor:pointer;font-size:12px;color:var(--ink);text-align:left;">
+                      <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor"
+                        stroke-width="1.4">
+                        <circle cx="7.5" cy="7.5" r="6" />
+                        <line x1="7.5" y1="5" x2="7.5" y2="7.5" />
+                        <circle cx="7.5" cy="10" r="0.7" fill="currentColor" />
+                      </svg>
+                      Lihat Detail
+                    </button>
+
+                    <button type="button" (click)="rebootDevice(device)"
+                      style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;background:transparent;border:none;cursor:pointer;font-size:12px;color:var(--ink);text-align:left;">
+                      <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor"
+                        stroke-width="1.4">
+                        <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2" />
+                        <polyline points="7.5,2 10,2 10,4.5" />
+                      </svg>
+                      Reboot
+                    </button>
+
+                    <button type="button" (click)="openManagement(device)"
+                      style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;background:transparent;border:none;cursor:pointer;font-size:12px;color:var(--ink);text-align:left;">
+                      <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor"
+                        stroke-width="1.4">
+                        <rect x="1" y="3" width="13" height="10" rx="1" />
+                        <line x1="1" y1="6" x2="14" y2="6" />
+                      </svg>
+                      Buka Management
+                    </button>
+
+                    <div style="border-top:0.5px solid var(--border);margin:4px 0;"></div>
+
+                    <button type="button" (click)="deleteDevice(device)"
+                      style="display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;background:transparent;border:none;cursor:pointer;font-size:12px;color:#C4442E;text-align:left;">
+                      <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="#C4442E" stroke-width="1.4">
+                        <polyline points="2,4 13,4" />
+                        <path d="M5 4V2.5h5V4" />
+                        <rect x="3" y="4" width="9" height="9" rx="1" />
+                        <line x1="6" y1="7" x2="6" y2="11" />
+                        <line x1="9" y1="7" x2="9" y2="11" />
+                      </svg>
+                      Hapus Perangkat
+                    </button>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination -->
+      <div
+        style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-top:0.5px solid var(--border);">
+        <div style="font-size:11.5px;color:var(--muted);">
+          Menampilkan {{ startIndex }}–{{ endIndex }} dari {{ filteredDevices.length }} perangkat
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button (click)="prevPage()" [disabled]="currentPage === 1" [style.opacity]="currentPage === 1 ? '0.4' : '1'"
+            style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0.5px solid var(--border);border-radius:6px;background:var(--paper);cursor:pointer;color:var(--ink);">
+            <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="9,3 5,7.5 9,12" />
+            </svg>
+          </button>
+          <span style="font-size:12px;color:var(--ink);min-width:60px;text-align:center;">
+            Hal {{ currentPage }} / {{ totalPages }}
+          </span>
+          <button (click)="nextPage()" [disabled]="currentPage === totalPages"
+            [style.opacity]="currentPage === totalPages ? '0.4' : '1'"
+            style="display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0.5px solid var(--border);border-radius:6px;background:var(--paper);cursor:pointer;color:var(--ink);">
+            <svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="6,3 10,7.5 6,12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="card" style="margin-top:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:13px;font-weight:600;font-family:'Space Grotesk',sans-serif;color:var(--primary);">
+          Aktivitas Perangkat Terbaru (Audit Log)
+        </div>
+        <span style="font-size:11px;color:var(--muted);">Live audit trail</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div *ngFor="let log of activityLogs"
+          style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--paper);border-radius:8px;font-size:12px;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span class="mono" style="font-size:11px;color:var(--muted);">{{ log.time }}</span>
+            <span style="font-weight:600;color:var(--primary);">{{ log.user }}</span>
+            <span>{{ log.message }}</span>
+          </div>
+          <span class="badge"
+            style="background:#fff;border:0.5px solid var(--border);font-size:10px;color:var(--muted);">{{ log.status
+            }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- MODAL: Detail Perangkat                                        -->
+<!-- ============================================================== -->
+<div class="modal-overlay" [class.active]="showDetailModal" (click)="closeDetailModal()" *ngIf="selectedDevice">
+  <div class="modal-box" style="max-width:520px;" (click)="$event.stopPropagation()">
+
+    <!-- Header -->
+    <div
+      style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;padding-bottom:12px;border-bottom:0.5px solid var(--border);">
+      <div>
+        <div style="font-size:15px;font-weight:600;color:var(--ink);font-family:'Space Grotesk',sans-serif;">{{
+          selectedDevice.name }}</div>
+        <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">
+          {{ selectedDevice.brand }} {{ selectedDevice.model }} · {{ selectedDevice.siteLocation }}
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;"
+          [style.color]="selectedDevice.status === 'Online' ? '#5B7A52' : '#C4442E'">
+          <span class="dot" [style.background]="selectedDevice.status === 'Online' ? '#5B7A52' : '#C4442E'"></span>
+          {{ selectedDevice.status }}
+        </span>
+        <button type="button" (click)="closeDetailModal()" class="modal-close">✕</button>
+      </div>
+    </div>
+
+    <!-- Info Grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px;">
+      <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Tipe Perangkat</div>
+        <div style="font-size:12.5px;font-weight:500;">{{ selectedDevice.type }}</div>
+      </div>
+
+      <div
+        style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">IP Address</div>
+          <div style="font-size:12px;font-weight:500;font-family:'JetBrains Mono',monospace;">{{ selectedDevice.ip }}
+          </div>
+        </div>
+        <button type="button" (click)="copyToClipboard(selectedDevice.ip, 'IP Address')"
+          style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;" title="Salin IP">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        </button>
+      </div>
+
+      <div
+        style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">MAC Address</div>
+          <div style="font-size:11.5px;font-weight:500;font-family:'JetBrains Mono',monospace;">{{ selectedDevice.mac }}
+          </div>
+        </div>
+        <button type="button" (click)="copyToClipboard(selectedDevice.mac, 'MAC Address')"
+          style="background:none;border:none;cursor:pointer;color:var(--muted);padding:2px;" title="Salin MAC">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
+        </button>
+      </div>
+
+      <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Kekuatan Sinyal</div>
+        <div style="font-size:12.5px;font-weight:500;"
+          [style.color]="selectedDevice.status === 'Online' ? '#5B7A52' : '#C4442E'">
+          {{ selectedDevice.signal }}
+        </div>
+      </div>
+
+      <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Client Terhubung</div>
+        <div style="font-size:12.5px;font-weight:500;">{{ selectedDevice.client }} Klien</div>
+      </div>
+
+      <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Lokasi Site</div>
+        <div style="font-size:12.5px;font-weight:500;">{{ selectedDevice.siteLocation }}</div>
+      </div>
+
+      <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Gedung & Lantai</div>
+        <div style="font-size:12.5px;font-weight:500;">{{ selectedDevice.gedung }} ({{ selectedDevice.lantai }})</div>
+      </div>
+
+      <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Ruangan</div>
+        <div style="font-size:12.5px;font-weight:500;">{{ selectedDevice.ruangan }}</div>
+      </div>
+    </div>
+
+    <!-- Action Buttons inside Detail -->
+    <div style="display:flex;gap:8px;border-top:0.5px solid var(--border);padding-top:14px;" *ngIf="!isClient">
+      <button type="button" (click)="rebootDevice(selectedDevice)"
+        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;border:0.5px solid var(--border);border-radius:8px;background:var(--paper);cursor:pointer;font-size:12px;color:var(--ink);font-weight:500;">
+        <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+          <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2" />
+          <polyline points="7.5,2 10,2 10,4.5" />
+        </svg>
+        Reboot
+      </button>
+
+      <button type="button" (click)="openManagement(selectedDevice)"
+        style="flex:1.2;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;border:0.5px solid var(--border);border-radius:8px;background:var(--paper);cursor:pointer;font-size:12px;color:var(--ink);font-weight:500;">
+        <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+          <rect x="1" y="3" width="13" height="10" rx="1" />
+          <line x1="1" y1="6" x2="14" y2="6" />
+        </svg>
+        Buka Management
+      </button>
+
+      <button type="button" (click)="deleteDevice(selectedDevice)"
+        style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px;border:0.5px solid #FECACA;border-radius:8px;background:#FEF2F2;cursor:pointer;font-size:12px;color:#C4442E;font-weight:500;">
+        <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="#C4442E" stroke-width="1.4">
+          <polyline points="2,4 13,4" />
+          <path d="M5 4V2.5h5V4" />
+          <rect x="3" y="4" width="9" height="9" rx="1" />
+          <line x1="6" y1="7" x2="6" y2="11" />
+          <line x1="9" y1="7" x2="9" y2="11" />
+        </svg>
+        Hapus
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- MODAL: Reboot Perangkat                                        -->
+<!-- ============================================================== -->
+<div class="modal-overlay" [class.active]="showRebootModal" (click)="closeRebootModal()" *ngIf="rebootTargetDevice">
+  <div class="modal-box" style="max-width:440px;" (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div
+          style="width:28px;height:28px;border-radius:50%;background:#FEF3C7;display:flex;align-items:center;justify-content:center;color:#D97706;">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M13 7.5A5.5 5.5 0 1 1 7.5 2" />
+            <polyline points="7.5,2 10,2 10,4.5" />
+          </svg>
+        </div>
+        <h3 class="modal-title">Reboot Perangkat</h3>
+      </div>
+      <button type="button" class="modal-close" (click)="closeRebootModal()" [disabled]="isRebooting">✕</button>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <p style="font-size:13px;color:var(--ink);margin:0 0 10px 0;line-height:1.5;">
+        Apakah Anda yakin ingin me-reboot perangkat <strong>{{ rebootTargetDevice.name }}</strong>?
+      </p>
+
+      <div
+        style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span style="color:var(--muted);">IP Address:</span>
+          <span class="mono" style="font-weight:500;">{{ rebootTargetDevice.ip }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+          <span style="color:var(--muted);">Tipe:</span>
+          <span>{{ rebootTargetDevice.type }} ({{ rebootTargetDevice.brand }} {{ rebootTargetDevice.model }})</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:var(--muted);">Klien Aktif:</span>
+          <span style="font-weight:500;">{{ rebootTargetDevice.client }} terhubung</span>
+        </div>
+      </div>
+
+      <div
+        style="font-size:11.5px;color:#B45309;background:#FFFBEB;border:0.5px solid #FDE68A;border-radius:6px;padding:8px 10px;line-height:1.4;">
+        ⚠️ Perhatian: Koneksi klien ke perangkat ini akan terputus sementara selama restart berlangsung (~30-60 detik).
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:0;">
+      <button type="button" class="btn btn-outline" (click)="closeRebootModal()" [disabled]="isRebooting">
+        Batal
+      </button>
+      <button type="button" class="btn" (click)="confirmReboot()" [disabled]="isRebooting"
+        style="display:inline-flex;align-items:center;gap:6px;background:var(--primary);">
+        <svg *ngIf="isRebooting" class="spinner" width="13" height="13" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="3">
+          <circle cx="12" cy="12" r="10" stroke-dasharray="40" stroke-dashoffset="10" />
+        </svg>
+        <span *ngIf="isRebooting">Sedang me-reboot...</span>
+        <span *ngIf="!isRebooting">Ya, Reboot Perangkat</span>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- MODAL: Buka Management                                         -->
+<!-- ============================================================== -->
+<div class="modal-overlay" [class.active]="showManagementModal" (click)="closeManagementModal()"
+  *ngIf="managementTargetDevice">
+  <div class="modal-box" style="max-width:480px;" (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div
+          style="width:28px;height:28px;border-radius:50%;background:#EEF2FF;display:flex;align-items:center;justify-content:center;color:var(--primary);">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.5">
+            <rect x="1" y="3" width="13" height="10" rx="1" />
+            <line x1="1" y1="6" x2="14" y2="6" />
+          </svg>
+        </div>
+        <h3 class="modal-title">Management Console</h3>
+      </div>
+      <button type="button" class="modal-close" (click)="closeManagementModal()">✕</button>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:4px;">
+        {{ managementTargetDevice.name }}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">
+        Portal manajemen dan web controller untuk konfigurasi perangkat.
+      </div>
+
+      <div
+        style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px;">
+          <span style="color:var(--muted);">Provider:</span>
+          <span style="font-weight:600;color:var(--primary);">Ruijie Cloud / Web GUI</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px;">
+          <span style="color:var(--muted);">Web GUI URL:</span>
+          <span class="mono" style="font-weight:500;">http://{{ managementTargetDevice.ip }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;">
+          <span style="color:var(--muted);">Status Layanan:</span>
+          <span style="color:#5B7A52;font-weight:500;">● Online (Port 80/443 aktif)</span>
+        </div>
+      </div>
+
+      <!-- Ping Test Card -->
+      <div
+        style="border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;background:#fff;">
+        <div>
+          <div style="font-size:11.5px;font-weight:500;color:var(--ink);">Diagnostik ICMP Ping</div>
+          <div style="font-size:11px;color:var(--muted);">
+            <span *ngIf="pingStatus === 'idle'">Belum dijalankan</span>
+            <span *ngIf="pingStatus === 'pinging'" style="color:var(--primary);">Sedang mengirim paket ICMP...</span>
+            <span *ngIf="pingStatus === 'success'" style="color:#5B7A52;font-weight:500;">✓ RTT 2ms · 0% loss</span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline" (click)="testPing()" [disabled]="pingStatus === 'pinging'"
+          style="padding:5px 10px;font-size:11.5px;">
+          {{ pingStatus === 'pinging' ? 'Testing...' : 'Tes Ping' }}
+        </button>
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:0;">
+      <button type="button" class="btn btn-outline" (click)="closeManagementModal()">
+        Tutup
+      </button>
+      <button type="button" class="btn" (click)="openExternalManagement()"
+        style="display:inline-flex;align-items:center;gap:6px;">
+        <span>Buka Web Console</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+          <polyline points="15 3 21 3 21 9" />
+          <line x1="10" y1="14" x2="21" y2="3" />
+        </svg>
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- MODAL: Konfirmasi Hapus                                        -->
+<!-- ============================================================== -->
+<div class="modal-overlay" [class.active]="showDeleteModal" (click)="closeDeleteModal()" *ngIf="deleteTargetDevice">
+  <div class="modal-box" style="max-width:440px;" (click)="$event.stopPropagation()">
+
+    <div class="modal-header">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <div
+          style="width:28px;height:28px;border-radius:50%;background:#FEE2E2;display:flex;align-items:center;justify-content:center;color:#C4442E;">
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="#C4442E" stroke-width="1.6">
+            <polyline points="2,4 13,4" />
+            <path d="M5 4V2.5h5V4" />
+            <rect x="3" y="4" width="9" height="9" rx="1" />
+            <line x1="6" y1="7" x2="6" y2="11" />
+            <line x1="9" y1="7" x2="9" y2="11" />
+          </svg>
+        </div>
+        <h3 class="modal-title" style="color:#C4442E;">Hapus Perangkat</h3>
+      </div>
+      <button type="button" class="modal-close" (click)="closeDeleteModal()">✕</button>
+    </div>
+
+    <div style="margin-bottom:18px;">
+      <p style="font-size:13px;color:var(--ink);margin:0 0 10px 0;line-height:1.5;">
+        Apakah Anda yakin ingin menghapus perangkat <strong>{{ deleteTargetDevice.name }}</strong>?
+      </p>
+
+      <div
+        style="font-size:11.5px;color:#991B1B;background:#FEF2F2;border:0.5px solid #FECACA;border-radius:6px;padding:8px 10px;line-height:1.4;">
+        ⚠️ Tindakan ini permanen. Perangkat akan dihapus dari daftar pemantauan dan riwayat statistik audit.
+      </div>
+    </div>
+
+    <div class="form-actions" style="margin-top:0;">
+      <button type="button" class="btn btn-outline" (click)="closeDeleteModal()">
+        Batal
+      </button>
+      <button type="button" class="btn" (click)="confirmDelete()" style="background:#C4442E;color:#fff;">
+        Ya, Hapus Perangkat
+      </button>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- MODAL: Tambah Perangkat                                        -->
+<!-- ============================================================== -->
+<div class="modal-overlay" [class.active]="showAddModal" (click)="closeModal()">
+  <div class="modal-box modal-device-form" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title">+ Tambah Perangkat Jaringan</h3>
+      <button type="button" class="modal-close" (click)="closeModal()">✕</button>
+    </div>
+
+    <!-- Row: Site Location & Tipe Perangkat -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>Site Location <span class="required">*</span></label>
+        <select [(ngModel)]="newDevice.siteLocation">
+          <option *ngFor="let site of sites" [value]="site">{{ site }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Tipe Perangkat <span class="required">*</span></label>
+        <select [(ngModel)]="newDevice.tipePerangkat">
+          <option value="Access Point">Access Point</option>
+          <option value="Switch">Switch</option>
+          <option value="Router">Router</option>
+          <option value="Server">Server</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Row: Nama, Brand, Model -->
+    <div class="form-row form-row-3">
+      <div class="form-group form-group-wide">
+        <label>Nama Perangkat <span class="required">*</span></label>
+        <input type="text" [(ngModel)]="newDevice.nama" placeholder="misal: AP-Lab-Lt2">
+      </div>
+      <div class="form-group form-group-narrow">
+        <label>Brand</label>
+        <input type="text" [(ngModel)]="newDevice.brand" placeholder="Ruijie">
+      </div>
+      <div class="form-group form-group-narrow">
+        <label>Model</label>
+        <input type="text" [(ngModel)]="newDevice.model" placeholder="RAP2200">
+      </div>
+    </div>
+
+    <!-- Row: Serial Number & MAC -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>Serial Number (SN)</label>
+        <input type="text" [(ngModel)]="newDevice.serialNumber" placeholder="misal: RG-AP-DIR-009">
+      </div>
+      <div class="form-group">
+        <label>MAC Address</label>
+        <input type="text" [(ngModel)]="newDevice.macAddress" placeholder="misal: AA:BB:CC:DD:EE:09">
+      </div>
+    </div>
+
+    <!-- Row: IP Address & Gateway -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>IP Address</label>
+        <input type="text" [(ngModel)]="newDevice.ipAddress" placeholder="misal: 172.16.2.25">
+      </div>
+      <div class="form-group">
+        <label>Gateway</label>
+        <input type="text" [(ngModel)]="newDevice.gateway" placeholder="misal: 172.16.2.1">
+      </div>
+    </div>
+
+    <!-- Row: Management Provider & External Device ID -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>Management Provider <span class="required">*</span></label>
+        <select [(ngModel)]="newDevice.managementProvider">
+          <option value="Ruijie Cloud">Ruijie Cloud</option>
+          <option value="Mikrotik">Mikrotik</option>
+          <option value="TP-Link Omada">TP-Link Omada</option>
+          <option value="Manual">Manual</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>External Device ID</label>
+        <input type="text" [(ngModel)]="newDevice.externalDeviceId" placeholder="ID perangkat di Cloud Vendor">
+      </div>
+    </div>
+
+    <!-- Management URL -->
+    <div class="form-group">
+      <label>Management URL</label>
+      <input type="text" [(ngModel)]="newDevice.managementUrl" placeholder="https://cloud-as.ruijienetworks.com/...">
+      <span class="form-hint">URL portal manajemen perangkat untuk aksi "Buka Management".</span>
+    </div>
+
+    <!-- Row: Gedung, Lantai, Ruangan -->
+    <div class="form-row form-row-3">
+      <div class="form-group">
+        <label>Gedung</label>
+        <input type="text" [(ngModel)]="newDevice.gedung" placeholder="misal: Gedung TLM">
+      </div>
+      <div class="form-group">
+        <label>Lantai</label>
+        <input type="text" [(ngModel)]="newDevice.lantai" placeholder="misal: Lt. 2">
+      </div>
+      <div class="form-group">
+        <label>Ruangan</label>
+        <input type="text" [(ngModel)]="newDevice.ruangan" placeholder="misal: Lab Komputer">
+      </div>
+    </div>
+
+    <!-- Device Capabilities -->
+    <div class="form-capabilities">
+      <label class="capabilities-label">Device Capabilities</label>
+      <div class="capabilities-row">
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="newDevice.capabilities.reboot">
+          <span class="checkbox-custom"></span>
+          Reboot
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="newDevice.capabilities.webManagement">
+          <span class="checkbox-custom"></span>
+          Web Management
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="newDevice.capabilities.cli">
+          <span class="checkbox-custom"></span>
+          CLI
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="newDevice.capabilities.activityLogs">
+          <span class="checkbox-custom"></span>
+          Activity Logs
+        </label>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn btn-outline" (click)="closeModal()">Batal</button>
+      <button type="button" class="btn" (click)="saveDevice()">Simpan Perangkat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================== -->
+<!-- TOAST NOTIFICATION                                             -->
+<!-- ============================================================== -->
+<div class="toast-card" [class.show]="toast.visible" [class.toast-success]="toast.type === 'success'"
+  [class.toast-alert]="toast.type === 'alert'" [class.toast-info]="toast.type === 'info'">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <!-- Icon -->
+    <span *ngIf="toast.type === 'success'" style="color:#5B7A52;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M20 6L9 17l-5-5" />
+      </svg>
+    </span>
+    <span *ngIf="toast.type === 'alert'" style="color:#C4442E;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="8" x2="12" y2="12" />
+        <line x1="12" y1="16" x2="12.01" y2="16" />
+      </svg>
+    </span>
+    <span *ngIf="toast.type === 'info'" style="color:var(--primary);">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="16" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12.01" y2="8" />
+      </svg>
+    </span>
+    <span style="font-size:12.5px;color:var(--ink);font-weight:500;">{{ toast.message }}</span>
+  </div>
+  <button type="button" (click)="closeToast()"
+    style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:0 0 0 8px;line-height:1;">
+    ✕
+  </button>
+</div>

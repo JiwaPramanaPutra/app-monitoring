@@ -1,0 +1,79 @@
+<div id="app-shell">
+  <app-sidebar></app-sidebar>
+
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h2 style="font-size:15px;">Pengguna</h2>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ users.length }} pengguna aktif</div>
+      </div>
+      <button class="btn" (click)="showModal = true" *ngIf="!isClient">Tambah pengguna</button>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+      <table>
+        <tr>
+          <th>Nama</th>
+          <th>Role</th>
+          <th>Site tugas</th>
+          <th>Login terakhir</th>
+          <th>Aksi</th>
+        </tr>
+        <tr *ngFor="let user of users">
+          <td>{{ user.name }}</td>
+          <td>
+            <span class="badge" [style.background]="user.roleBg" [style.color]="user.roleColor">{{ user.role }}</span>
+          </td>
+          <td>{{ user.site }}</td>
+          <td class="mono">{{ user.lastLogin }}</td>
+          <td style="color:var(--primary);cursor:pointer;" *ngIf="!isClient">Edit · Hapus</td>
+          <td *ngIf="isClient" style="color:var(--muted);font-size:11px;">—</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="card">
+      <div style="font-size:12px;font-weight:500;margin-bottom:10px;">Log aktivitas</div>
+      <div *ngFor="let log of activityLogs" style="font-size:11.5px;padding:5px 0;">
+        <span class="mono" [style.color]="log.timeColor">{{ log.time }}</span> &nbsp;{{ log.message }}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Tambah Pengguna -->
+<div class="modal-overlay" [class.active]="showModal" (click)="closeModal()">
+  <div class="modal-box" style="max-width:400px;" (click)="$event.stopPropagation()">
+    <h3 style="font-size:16px;margin-bottom:16px;">Tambah Pengguna Baru</h3>
+
+    <div class="form-group">
+      <label>Nama Lengkap</label>
+      <input type="text" [(ngModel)]="newUser.name" required placeholder="Contoh: Budi Santoso">
+    </div>
+
+    <div class="form-group">
+      <label>Role</label>
+      <select [(ngModel)]="newUser.role" required>
+        <option value="EOS">EOS</option>
+        <option value="Client">Client</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Site Tugas</label>
+      <select [(ngModel)]="newUser.site" required>
+        <option value="Semua site">Semua site</option>
+        <option value="Direktorat">Direktorat</option>
+        <option value="Gigi">Gigi</option>
+        <option value="Keperawatan">Keperawatan</option>
+        <option value="Gizi">Gizi</option>
+        <option value="Kebidanan">Kebidanan</option>
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn btn-outline" (click)="closeModal()">Batal</button>
+      <button type="button" class="btn" (click)="addUser()">Simpan Pengguna</button>
+    </div>
+  </div>
+</div>

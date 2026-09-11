@@ -1,0 +1,71 @@
+<div class="sidebar">
+  <a routerLink="/dashboard" class="brand">
+    <svg width="20" height="20" viewBox="0 0 22 22">
+      <polyline points="0,11 5,11 7,3 10,19 12,11 22,11" fill="none" stroke="#3E3A6B" stroke-width="2"/>
+    </svg>
+    <span style="font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:15px;color:var(--ink);">Nadi</span>
+  </a>
+
+  <div class="nav-list">
+    <a routerLink="/dashboard" routerLinkActive="active" class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="1" y="1" width="6" height="6" rx="1"/>
+        <rect x="8" y="1" width="6" height="4" rx="1"/>
+        <rect x="8" y="7" width="6" height="7" rx="1"/>
+        <rect x="1" y="9" width="6" height="5" rx="1"/>
+      </svg>
+      Dashboard
+    </a>
+
+    <a routerLink="/monitoring" routerLinkActive="active" class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+        <polyline points="1,8 4,8 5.5,2 8,13 9.5,8 14,8"/>
+      </svg>
+      Monitoring Jaringan
+    </a>
+
+    <a routerLink="/laporan-trafik" routerLinkActive="active" class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="1" y="9" width="3" height="5"/>
+        <rect x="6" y="5" width="3" height="9"/>
+        <rect x="11" y="2" width="3" height="12"/>
+      </svg>
+      Laporan Trafik
+    </a>
+
+    <a routerLink="/laporan" routerLinkActive="active" class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+        <rect x="2" y="1.5" width="11" height="12" rx="1"/>
+        <line x1="4.5" y1="5" x2="10.5" y2="5"/>
+        <line x1="4.5" y1="7.5" x2="10.5" y2="7.5"/>
+        <line x1="4.5" y1="10" x2="8" y2="10"/>
+      </svg>
+      Laporan
+    </a>
+
+    <a routerLink="/pengguna" routerLinkActive="active" class="nav-item">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="7.5" cy="4.5" r="2.5"/>
+        <path d="M2 13c0-2.8 2.5-5 5.5-5s5.5 2.2 5.5 5"/>
+      </svg>
+      Pengguna
+    </a>
+
+    <button type="button" class="nav-item" (click)="logout()">
+      <svg width="15" height="15" viewBox="0 0 15 15" fill="none" stroke="currentColor" stroke-width="1.4">
+        <path d="M6 1.5H2.5v12H6"/>
+        <path d="M9 4.5l3.5 3-3.5 3"/>
+        <line x1="12.5" y1="7.5" x2="5.5" y2="7.5"/>
+      </svg>
+      Keluar
+    </button>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="avatar">{{ currentUser.initials }}</div>
+    <div>
+      <div class="who">{{ currentUser.name }}</div>
+      <div class="role">{{ currentUser.role }}</div>
+    </div>
+  </div>
+</div>

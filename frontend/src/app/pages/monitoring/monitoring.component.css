@@ -1,0 +1,66 @@
+/* Monitoring Component Custom Styles */
+
+.device-name-link:hover {
+  color: var(--primary) !important;
+  text-decoration: underline;
+}
+
+/* Spinner Animation for Reboot */
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Floating Toast Notification */
+.toast-card {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 2000;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(27, 36, 48, 0.16);
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 280px;
+  max-width: 440px;
+  transform: translateY(30px);
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.toast-card.show {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.toast-card.toast-success {
+  border-left: 4px solid #5B7A52;
+}
+
+.toast-card.toast-alert {
+  border-left: 4px solid #C4442E;
+}
+
+.toast-card.toast-info {
+  border-left: 4px solid var(--primary);
+}
+
+/* Ensure modal overlays sit above all app elements */
+:host ::ng-deep .modal-overlay {
+  z-index: 1000 !important;
+}

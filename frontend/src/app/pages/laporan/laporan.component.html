@@ -1,0 +1,105 @@
+<div id="app-shell">
+  <app-sidebar></app-sidebar>
+
+  <div class="main">
+    <div class="page-header">
+      <div>
+        <h2 style="font-size:15px;">Laporan</h2>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ reports.length }} laporan ditemukan</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-outline">Ekspor</button>
+        <button class="btn" (click)="showModal = true" *ngIf="!isClient">Tambah laporan</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <div style="display:flex;gap:8px;">
+          <input type="text" [(ngModel)]="searchText" placeholder="Cari masalah / tindakan..." style="border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
+          <select [(ngModel)]="filterType" style="border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
+            <option value="">Semua jenis</option>
+            <option value="Jaringan">Jaringan</option>
+            <option value="Printer / komputer">Printer / komputer</option>
+            <option value="Monitoring kegiatan khusus">Monitoring kegiatan khusus</option>
+          </select>
+          <button type="button" class="btn btn-outline" style="padding:5px 10px;font-size:11.5px;">Cari</button>
+        </div>
+      </div>
+      <table>
+        <tr>
+          <th>Tanggal</th>
+          <th>Jenis</th>
+          <th>Masalah</th>
+          <th>Tindakan</th>
+          <th>Site</th>
+          <th>Teknisi</th>
+          <th>Prioritas</th>
+          <th *ngIf="!isClient">Aksi</th>
+        </tr>
+        <tr *ngFor="let report of reports">
+          <td class="mono">{{ report.date }}</td>
+          <td>{{ report.type }}</td>
+          <td>{{ report.masalah }}</td>
+          <td>{{ report.tindakan }}</td>
+          <td>{{ report.site }}</td>
+          <td>{{ report.technician }}</td>
+          <td>
+            <span class="badge" [style.background]="report.priorityBg" [style.color]="report.priorityColor">{{ report.priority }}</span>
+          </td>
+          <td style="color:var(--primary);cursor:pointer;" *ngIf="!isClient">Edit · Hapus</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Tambah Laporan -->
+<div class="modal-overlay" [class.active]="showModal" (click)="closeModal()">
+  <div class="modal-box" style="max-width:400px;" (click)="$event.stopPropagation()">
+    <h3 style="font-size:16px;margin-bottom:16px;">Tambah Laporan Baru</h3>
+
+    <div class="form-group">
+      <label>Jenis Laporan</label>
+      <select [(ngModel)]="newReport.type" required>
+        <option value="Jaringan">Jaringan</option>
+        <option value="Printer / komputer">Printer / komputer</option>
+        <option value="Monitoring kegiatan khusus">Monitoring kegiatan khusus</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Masalah</label>
+      <textarea [(ngModel)]="newReport.masalah" rows="2" required placeholder="Apa masalah yang ditemukan..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Tindakan / Solusi</label>
+      <textarea [(ngModel)]="newReport.tindakan" rows="2" required placeholder="Apa yang dilakukan untuk menyelesaikan..."></textarea>
+    </div>
+
+    <div class="form-group">
+      <label>Site</label>
+      <select [(ngModel)]="newReport.site" required>
+        <option value="Direktorat">Direktorat</option>
+        <option value="Gigi">Gigi</option>
+        <option value="Keperawatan">Keperawatan</option>
+        <option value="Gizi">Gizi</option>
+        <option value="Kebidanan">Kebidanan</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Prioritas Pekerjaan</label>
+      <select [(ngModel)]="newReport.priority" required>
+        <option value="Normal">Normal</option>
+        <option value="Urgent">Urgent</option>
+      </select>
+    </div>
+
+    <div class="form-actions">
+      <button type="button" class="btn btn-outline" (click)="closeModal()">Batal</button>
+      <button type="button" class="btn" (click)="addReport()">Simpan Laporan</button>
+    </div>
+  </div>
+</div>

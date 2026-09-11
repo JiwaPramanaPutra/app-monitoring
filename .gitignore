@@ -1,0 +1,36 @@
+# Node dependencies
+node_modules/
+*/node_modules/
+
+# Compiled output
+dist/
+frontend/dist/
+tmp/
+out-tsc/
+bazel-out/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Angular cache
+.angular/
+frontend/.angular/
+
+# IDE and OS
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Backup or temporary files
+*.tmp
+*.bak
+*.out
+*.txt.bak

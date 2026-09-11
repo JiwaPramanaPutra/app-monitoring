@@ -1,0 +1,265 @@
+<div id="app-shell">
+  <app-sidebar></app-sidebar>
+
+  <div class="main">
+    <!-- Page Header -->
+    <div class="page-header">
+      <div>
+        <h2 style="font-size:18px;">Dashboard</h2>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">Ringkasan kondisi jaringan seluruh site · update tiap 2 menit</div>
+      </div>
+    </div>
+
+    <!-- ① KPI Cards -->
+    <div class="dashboard-grid-4">
+      <!-- Perangkat Down -->
+      <div class="card kpi-card kpi-card--alert kpi-card--clickable" (click)="goToMonitoringDown()">
+        <div class="kpi-label">Perangkat Down</div>
+        <div class="kpi-value mono">
+          {{ kpi.perangkatDown }}
+          <span class="kpi-sub">/ {{ kpi.perangkatTotal }} perangkat</span>
+        </div>
+        <div class="kpi-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Site Aktif -->
+      <div class="card kpi-card kpi-card--clickable" (click)="goToMonitoringSites()">
+        <div class="kpi-label">Site Aktif</div>
+        <div class="kpi-value mono">
+          {{ kpi.siteAktif }}<span class="kpi-sub">/{{ kpi.siteTotal }}</span>
+        </div>
+        <div class="kpi-icon kpi-icon--muted">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+            <polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Network Availability -->
+      <div class="card kpi-card">
+        <div class="kpi-label">Network Availability</div>
+        <div class="kpi-value mono">{{ kpi.networkAvailability }}<span class="kpi-sub">%</span></div>
+        <div class="kpi-icon kpi-icon--muted">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Laporan Bulan Ini -->
+      <div class="card kpi-card kpi-card--clickable" (click)="goToLaporanBulanIni()">
+        <div class="kpi-label">Laporan Bulan Ini</div>
+        <div class="kpi-value mono">{{ kpi.laporanBulanIni }}</div>
+        <div class="kpi-icon kpi-icon--muted">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- ② Kesehatan Jaringan per Site -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title">Kesehatan Jaringan per Site</div>
+      <div class="site-grid">
+        <div
+          class="site-card"
+          *ngFor="let site of sites"
+          (click)="goToMonitoringSite(site.name)"
+          title="Klik untuk lihat detail {{ site.name }}"
+        >
+          <!-- Site name & status badge -->
+          <div class="site-card-header">
+            <span class="site-card-name">{{ site.name }}</span>
+            <span class="site-card-status" [style.color]="site.color" [style.background]="site.color + '18'">
+              {{ site.status }}
+            </span>
+          </div>
+
+          <!-- Progress bar -->
+          <div class="site-progress-track">
+            <div
+              class="site-progress-fill"
+              [style.width.%]="site.percentage"
+              [style.background]="site.color"
+            ></div>
+          </div>
+
+          <!-- Stats row -->
+          <div class="site-card-stats">
+            <span class="mono" style="font-size:11px;color:var(--ink);font-weight:500;">{{ site.online }}/{{ site.total }}</span>
+            <span style="color:var(--muted);font-size:10px;">perangkat online</span>
+            <span class="mono" style="font-size:11px;font-weight:600;margin-left:auto;" [style.color]="site.color">{{ site.percentage }}%</span>
+          </div>
+
+          <!-- Link hint -->
+          <div class="site-card-link">Lihat Monitoring →</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ Trend Traffic & Perangkat Bermasalah -->
+    <div class="dashboard-grid-2">
+
+      <!-- Real-Time Traffic Card -->
+      <div class="card">
+
+        <!-- Card header: title + LIVE badge + site selector -->
+        <div class="rt-card-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div class="card-title" style="margin:0;">Traffic Jaringan</div>
+            <span class="live-badge">
+              <span class="live-dot"></span>LIVE
+            </span>
+          </div>
+          <select [(ngModel)]="selectedSite" (change)="onSiteChange()" class="rt-site-select">
+            <option *ngFor="let site of trafficSites" [value]="site">{{ site }}</option>
+          </select>
+        </div>
+
+        <!-- SVG Chart dengan Y-axis + timestamp -->
+        <div class="rt-chart-wrap">
+          <svg viewBox="0 0 860 192" class="rt-chart-svg" preserveAspectRatio="none">
+
+            <!-- Y-axis grid lines + labels -->
+            <ng-container *ngFor="let gl of yGridLines">
+              <!-- grid line from chart-left to chart-right -->
+              <line [attr.x1]="48" [attr.y1]="gl.y" [attr.x2]="856" [attr.y2]="gl.y" class="chart-grid"/>
+              <!-- Y label at left margin -->
+              <text [attr.x]="44" [attr.y]="gl.y + 3.5" class="y-axis-label">{{ gl.label }}</text>
+            </ng-container>
+
+            <!-- Area fills -->
+            <polygon class="chart-area-tx" [attr.points]="txAreaPath"></polygon>
+            <polygon class="chart-area-rx" [attr.points]="rxAreaPath"></polygon>
+
+            <!-- Lines -->
+            <path class="chart-line-tx" [attr.d]="txLinePath"></path>
+            <path class="chart-line-rx" [attr.d]="rxLinePath"></path>
+
+            <!-- Y-axis spine line -->
+            <line x1="48" y1="6" x2="48" y2="178" stroke="var(--border)" stroke-width="0.5"/>
+
+            <!-- Timestamp: oldest (left) -->
+            <text x="50" y="191" class="ts-label ts-label--left">{{ oldestTimestamp }}</text>
+            <!-- Timestamp: latest (right) -->
+            <text x="856" y="191" class="ts-label ts-label--right">{{ currentTimestamp }}</text>
+
+          </svg>
+        </div>
+
+        <!-- Legend + Stats -->
+        <div class="rt-stats-row">
+          <!-- Legend -->
+          <div style="display:flex;gap:14px;align-items:center;">
+            <div class="legend-item"><div class="legend-color" style="background:var(--primary);"></div>Tx</div>
+            <div class="legend-item"><div class="legend-color" style="background:var(--down);"></div>Rx</div>
+            <span style="font-size:10.5px;color:var(--muted);">Mbps</span>
+          </div>
+
+          <!-- Stats: Current / Average / Maximum -->
+          <div class="rt-stats-group mono">
+            <div class="rt-stat-col">
+              <div class="rt-stat-label">Current</div>
+              <div class="rt-stat-val">
+                <span style="color:var(--primary);font-weight:600;">{{ stats.txCurrent }}</span>
+                <span class="rt-stat-sep">/</span>
+                <span style="color:var(--down);font-weight:600;">{{ stats.rxCurrent }}</span>
+              </div>
+            </div>
+            <div class="rt-stat-col">
+              <div class="rt-stat-label">Average</div>
+              <div class="rt-stat-val">
+                <span style="color:var(--primary);font-weight:600;">{{ stats.txAvg }}</span>
+                <span class="rt-stat-sep">/</span>
+                <span style="color:var(--down);font-weight:600;">{{ stats.rxAvg }}</span>
+              </div>
+            </div>
+            <div class="rt-stat-col">
+              <div class="rt-stat-label">Maximum</div>
+              <div class="rt-stat-val">
+                <span style="color:var(--primary);font-weight:600;">{{ stats.txMax }}</span>
+                <span class="rt-stat-sep">/</span>
+                <span style="color:var(--down);font-weight:600;">{{ stats.rxMax }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <div class="rt-cta-row">
+          <a routerLink="/laporan-trafik" class="nav-link-cta">Lihat Laporan Trafik →</a>
+        </div>
+      </div>
+
+      <!-- Perangkat Bermasalah (max 3) -->
+      <div class="card">
+        <div class="card-title">Perangkat Bermasalah</div>
+        <div style="display:flex;flex-direction:column;margin-bottom:12px;">
+          <div class="problem-item" *ngFor="let device of perangkatBermasalah">
+            <div class="dot" [style.background]="device.statusColor" style="margin-top:4px;"></div>
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:600;">{{ device.name }}</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">{{ device.type }} · {{ device.location }}</div>
+              <div style="font-size:12px;margin-top:6px;color:var(--ink);">
+                {{ device.problem }}
+                <span style="color:var(--muted);">· {{ device.duration }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <a routerLink="/monitoring" class="nav-link-cta">Lihat semua perangkat →</a>
+      </div>
+    </div>
+
+    <!-- ④ Laporan Terbaru & Aktivitas Sistem -->
+    <div class="dashboard-grid-reports">
+
+      <!-- Laporan Terbaru (max 3) -->
+      <div class="card">
+        <div class="card-title">Laporan Terbaru</div>
+        <div style="display:flex;flex-direction:column;">
+          <div class="report-item" *ngFor="let report of recentReports">
+            <div class="mono" style="font-size:10.5px;color:var(--muted);">{{ report.date }} · {{ report.time }}</div>
+            <div style="font-size:13px;font-weight:500;color:var(--ink);">{{ report.content }}</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-size:11px;color:var(--muted);">
+                {{ report.site }} · <span style="color:var(--ink);">{{ report.technician }}</span>
+              </div>
+              <div class="badge" [style.background]="'var(--paper)'" [style.color]="report.color" style="font-weight:600;font-size:10.5px;">
+                {{ report.priority }}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);">
+          <a routerLink="/laporan" class="nav-link-cta">Lihat semua laporan →</a>
+        </div>
+      </div>
+
+      <!-- Aktivitas Sistem (max 5) -->
+      <div class="card">
+        <div class="card-title">Aktivitas Sistem</div>
+        <div style="display:flex;flex-direction:column;">
+          <div class="activity-item" *ngFor="let activity of systemActivities">
+            <div class="activity-dot"></div>
+            <div style="flex:1;">
+              <div class="mono" style="font-size:11px;color:var(--muted);margin-bottom:2px;">{{ activity.time }}</div>
+              <div style="font-size:12.5px;">{{ activity.content }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>

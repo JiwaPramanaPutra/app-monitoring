@@ -1,0 +1,486 @@
+/* ============================================
+   Dashboard Grid Layouts
+   ============================================ */
+.dashboard-grid-4 {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.dashboard-grid-2 {
+  display: grid;
+  grid-template-columns: 62% 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: stretch;
+}
+
+.dashboard-grid-reports {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 14px;
+  align-items: stretch;
+}
+
+/* ============================================
+   KPI Cards
+   ============================================ */
+.kpi-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 90px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.kpi-card--alert {
+  background: var(--primary);
+  color: #fff;
+}
+
+.kpi-label {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 500;
+  margin-bottom: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.kpi-card--alert .kpi-label {
+  color: #C9C7E4;
+}
+
+.kpi-value {
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.kpi-card--alert .kpi-value {
+  color: #fff;
+}
+
+.kpi-sub {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.kpi-card--alert .kpi-sub {
+  color: #C9C7E4;
+}
+
+.kpi-icon {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  color: #fff;
+  opacity: 0.25;
+  pointer-events: none;
+}
+
+.kpi-icon--muted {
+  color: var(--primary);
+  opacity: 0.12;
+}
+
+/* ============================================
+   Kesehatan Site — Card Grid
+   ============================================ */
+.site-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+}
+
+.site-card {
+  background: var(--paper);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  border: 0.5px solid transparent;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.site-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 2px 10px rgba(62, 58, 107, 0.10);
+  transform: translateY(-1px);
+}
+
+.site-card:hover .site-card-link {
+  opacity: 1;
+}
+
+.site-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.site-card-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--ink);
+}
+
+.site-card-status {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.site-progress-track {
+  height: 5px;
+  background: #e8e9ed;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.site-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+
+.site-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.site-card-link {
+  font-size: 10.5px;
+  color: var(--primary);
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  margin-top: -2px;
+}
+
+/* ============================================
+   Traffic Chart
+   ============================================ */
+/* ============================================
+   Real-Time Traffic Card
+   ============================================ */
+
+/* Card header: title+LIVE / site select */
+.rt-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+/* LIVE badge */
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'Space Grotesk', sans-serif;
+  letter-spacing: 0.06em;
+  color: #5B7A52;
+  background: #5B7A5218;
+  border-radius: 20px;
+  padding: 2px 8px 2px 6px;
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #5B7A52;
+  flex-shrink: 0;
+  animation: live-blink 1.4s ease-in-out infinite;
+}
+
+@keyframes live-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.25; }
+}
+
+/* Site dropdown — compact */
+.rt-site-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+  outline: none;
+  min-width: 110px;
+}
+
+/* Chart wrapper — height fixed, SVG fills it */
+.rt-chart-wrap {
+  width: 100%;
+  height: 196px;
+  position: relative;
+  margin-top: 4px;
+}
+
+.rt-chart-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Y-axis text labels (SVG <text>) */
+.y-axis-label {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  fill: var(--muted);
+  text-anchor: end;
+}
+
+/* Timestamp labels at bottom of chart (SVG <text>) */
+.ts-label {
+  font-size: 9px;
+  font-family: 'JetBrains Mono', monospace;
+  fill: var(--muted);
+}
+
+.ts-label--left  { text-anchor: start; }
+.ts-label--right { text-anchor: end; }
+
+/* Stats row below chart */
+.rt-stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--border);
+  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rt-stats-group {
+  display: flex;
+  gap: 18px;
+}
+
+.rt-stat-col {
+  text-align: right;
+}
+
+.rt-stat-label {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.rt-stat-val {
+  font-size: 12px;
+}
+
+.rt-stat-sep {
+  font-size: 10px;
+  color: var(--muted);
+  margin: 0 1px;
+}
+
+/* CTA row */
+.rt-cta-row {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--border);
+}
+
+.chart-grid {
+  stroke: var(--border);
+  stroke-width: 0.5;
+  stroke-dasharray: 4;
+}
+
+.chart-area-tx {
+  fill: var(--primary);
+  opacity: 0.15;
+}
+
+.chart-line-tx {
+  stroke: var(--primary);
+  stroke-width: 2;
+  fill: none;
+}
+
+.chart-area-rx {
+  fill: var(--down);
+  opacity: 0.15;
+}
+
+.chart-line-rx {
+  stroke: var(--down);
+  stroke-width: 2;
+  fill: none;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.legend-color {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+/* (period/mode toggle buttons removed — real-time mode only) */
+
+/* ============================================
+   Perangkat Bermasalah
+   ============================================ */
+.problem-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.problem-item:first-child { padding-top: 0; }
+.problem-item:last-child  { border-bottom: none; padding-bottom: 0; }
+
+/* ============================================
+   Laporan Terbaru
+   ============================================ */
+.report-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 0;
+  border-bottom: 0.5px solid var(--border);
+}
+
+.report-item:first-child { padding-top: 0; }
+.report-item:last-child  { border-bottom: none; padding-bottom: 0; }
+
+/* ============================================
+   Aktivitas Sistem (timeline)
+   ============================================ */
+.activity-item {
+  display: flex;
+  gap: 12px;
+  padding: 8px 0;
+  position: relative;
+}
+
+.activity-item:first-child { padding-top: 0; }
+
+.activity-item::before {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 20px;
+  bottom: -6px;
+  width: 1px;
+  background: var(--border);
+}
+
+.activity-item:last-child::before { display: none; }
+
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  margin-top: 4px;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+}
+
+/* ============================================
+   Card Title
+   ============================================ */
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Space Grotesk', sans-serif;
+  margin-bottom: 14px;
+  color: var(--primary);
+}
+
+/* ============================================
+   CTA Navigation Links
+   ============================================ */
+.nav-link-cta {
+  font-size: 12px;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  display: inline-block;
+  transition: opacity 0.15s ease;
+}
+
+.nav-link-cta:hover {
+  opacity: 0.7;
+  text-decoration: underline;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+@media (max-width: 1200px) {
+  .site-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard-grid-2 {
+    grid-template-columns: 60% 1fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .dashboard-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard-grid-2,
+  .dashboard-grid-reports {
+    grid-template-columns: 1fr;
+  }
+
+  .site-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  .site-grid {
+    grid-template-columns: 1fr;
+  }
+}
