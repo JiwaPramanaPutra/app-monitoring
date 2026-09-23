@@ -1,0 +1,61 @@
+<div class="site-dropdown-wrapper">
+  <!-- Trigger Button -->
+  <button class="site-dropdown-trigger" (click)="toggle()" type="button">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+      <circle cx="12" cy="10" r="3"/>
+    </svg>
+    <span>{{ selectedLabel }}</span>
+    <svg class="chevron" [class.open]="isOpen" width="12" height="12" viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="2.5">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  </button>
+
+  <!-- Dropdown Panel: Level 0 -->
+  <div class="dropdown-panel level-0" *ngIf="isOpen">
+    <div
+      *ngFor="let node of hierarchy; let i = index"
+      class="dropdown-item"
+      [class.has-children]="hasChildren(node)"
+      [class.active]="activeParentPath[0] === i"
+      (mouseenter)="setActiveAt(0, i)"
+      (click)="!hasChildren(node) && select(node)">
+      <span>{{ node.label }}</span>
+      <svg *ngIf="hasChildren(node)" width="10" height="10" viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="2.5">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+    </div>
+
+    <!-- Level 1 Submenu -->
+    <div class="dropdown-panel level-1" *ngIf="getChildrenAt(1) as children1">
+      <div
+        *ngFor="let node of children1; let j = index"
+        class="dropdown-item"
+        [class.has-children]="hasChildren(node)"
+        [class.active]="activeParentPath[1] === j"
+        (mouseenter)="setActiveAt(1, j)"
+        (click)="!hasChildren(node) && select(node)">
+        <span>{{ node.label }}</span>
+        <svg *ngIf="hasChildren(node)" width="10" height="10" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.5">
+          <polyline points="9 18 15 12 9 6"/>
+        </svg>
+      </div>
+
+      <!-- Level 2 Submenu -->
+      <div class="dropdown-panel level-2" *ngIf="getChildrenAt(2) as children2">
+        <div
+          *ngFor="let node of children2"
+          class="dropdown-item leaf"
+          (click)="select(node)">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>{{ node.label }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

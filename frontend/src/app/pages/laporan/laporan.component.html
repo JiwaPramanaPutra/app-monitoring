@@ -8,98 +8,163 @@
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ reports.length }} laporan ditemukan</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline">Ekspor</button>
-        <button class="btn" (click)="showModal = true" *ngIf="!isClient">Tambah laporan</button>
+        <button class="btn btn-outline" (click)="exportCSV()">Ekspor</button>
+        <button class="btn" (click)="openAddModal()" *ngIf="!isClient">Tambah laporan</button>
       </div>
     </div>
 
     <div class="card" style="padding:0;overflow:hidden;">
-      <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
-        <div style="display:flex;gap:8px;">
-          <input type="text" [(ngModel)]="searchText" placeholder="Cari masalah / tindakan..." style="border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
-          <select [(ngModel)]="filterType" style="border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
-            <option value="">Semua jenis</option>
-            <option value="Jaringan">Jaringan</option>
-            <option value="Printer / komputer">Printer / komputer</option>
-            <option value="Monitoring kegiatan khusus">Monitoring kegiatan khusus</option>
-          </select>
-          <button type="button" class="btn btn-outline" style="padding:5px 10px;font-size:11.5px;">Cari</button>
-        </div>
+      <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:8px;">
+        <input type="text" [(ngModel)]="searchText" (keyup.enter)="loadReports()" placeholder="Cari masalah / tindakan..." style="width:220px;border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
+        <select [(ngModel)]="filterType" (change)="loadReports()" style="width:160px;border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
+          <option value="">Semua jenis</option>
+          <option value="Jaringan">Jaringan</option>
+          <option value="Printer / komputer">Printer / komputer</option>
+          <option value="Monitoring kegiatan khusus">Monitoring kegiatan khusus</option>
+        </select>
+        <button type="button" class="btn btn-outline" style="padding:5px 10px;font-size:11.5px;" (click)="loadReports()">Cari</button>
       </div>
-      <table>
-        <tr>
-          <th>Tanggal</th>
-          <th>Jenis</th>
-          <th>Masalah</th>
-          <th>Tindakan</th>
-          <th>Site</th>
-          <th>Teknisi</th>
-          <th>Prioritas</th>
-          <th *ngIf="!isClient">Aksi</th>
-        </tr>
-        <tr *ngFor="let report of reports">
-          <td class="mono">{{ report.date }}</td>
-          <td>{{ report.type }}</td>
-          <td>{{ report.masalah }}</td>
-          <td>{{ report.tindakan }}</td>
-          <td>{{ report.site }}</td>
-          <td>{{ report.technician }}</td>
-          <td>
-            <span class="badge" [style.background]="report.priorityBg" [style.color]="report.priorityColor">{{ report.priority }}</span>
-          </td>
-          <td style="color:var(--primary);cursor:pointer;" *ngIf="!isClient">Edit · Hapus</td>
-        </tr>
-      </table>
+
+      <div style="overflow-x:auto;">
+        <table *ngIf="reports.length > 0">
+          <tr>
+            <th>Tanggal</th>
+            <th>Jenis</th>
+            <th>Masalah</th>
+            <th>Tindakan</th>
+            <th>Site</th>
+            <th>Gedung</th>
+            <th>Lantai</th>
+            <th>Ruangan</th>
+            <th>Perangkat</th>
+            <th>Teknisi</th>
+            <th *ngIf="!isClient">Aksi</th>
+          </tr>
+          <tr *ngFor="let report of reports">
+            <td class="mono">{{ report.date }}</td>
+            <td>{{ report.type }}</td>
+            <td>{{ report.masalah }}</td>
+            <td>{{ report.tindakan }}</td>
+            <td>{{ report.site }}</td>
+            <td>{{ report.gedung }}</td>
+            <td>{{ report.lantai }}</td>
+            <td>{{ report.ruangan }}</td>
+            <td>{{ report.perangkatTerkait }}</td>
+            <td>{{ report.technician }}</td>
+            <td style="color:var(--primary);cursor:pointer;white-space:nowrap;" *ngIf="!isClient">
+              <span (click)="openEditModal(report)">Edit</span> ·
+              <span (click)="deleteReport(report._id)">Hapus</span>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <div *ngIf="reports.length === 0 && !loading" style="padding:40px;text-align:center;color:var(--muted);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:12px;opacity:0.5;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        <div style="font-size:14px;font-weight:500;color:var(--ink);">Tidak ada laporan ditemukan</div>
+        <div style="font-size:12px;margin-top:4px;">Tambahkan laporan baru atau ubah filter pencarian.</div>
+      </div>
+      <div *ngIf="loading" style="padding:40px;text-align:center;color:var(--muted);font-size:13px;">
+        Memuat data laporan...
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Modal Tambah Laporan -->
-<div class="modal-overlay" [class.active]="showModal" (click)="closeModal()">
-  <div class="modal-box" style="max-width:400px;" (click)="$event.stopPropagation()">
-    <h3 style="font-size:16px;margin-bottom:16px;">Tambah Laporan Baru</h3>
+<!-- Modal: gunakan *ngIf agar di-create ulang setiap buka, menghindari stale ngModel -->
+<div class="modal-overlay active" *ngIf="showModal">
+  <div class="modal-box laporan-modal" (click)="$event.stopPropagation()">
 
-    <div class="form-group">
-      <label>Jenis Laporan</label>
-      <select [(ngModel)]="newReport.type" required>
-        <option value="Jaringan">Jaringan</option>
-        <option value="Printer / komputer">Printer / komputer</option>
-        <option value="Monitoring kegiatan khusus">Monitoring kegiatan khusus</option>
-      </select>
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <h3 style="font-size:14px;font-weight:600;margin:0;letter-spacing:-0.2px;">
+        {{ isEditing ? 'Edit Laporan' : 'Tambah Laporan Baru' }}
+      </h3>
+      <button type="button" (click)="closeModal()" style="background:none;border:none;cursor:pointer;padding:4px;color:var(--muted);line-height:1;border-radius:4px;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+
+    <!-- Row 1: Jenis + Site -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>Jenis Laporan</label>
+        <select name="type" [(ngModel)]="newReport.type">
+          <option value="Jaringan">Jaringan</option>
+          <option value="Printer / komputer">Printer / komputer</option>
+          <option value="Monitoring kegiatan khusus">Monitoring kegiatan khusus</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Site</label>
+        <app-site-dropdown
+          [selectedLabel]="newReport.site || 'Pilih Site'"
+          (siteSelected)="onLaporanSiteSelected($event)">
+        </app-site-dropdown>
+      </div>
+    </div>
+
+    <!-- Row 2: Gedung + Lantai -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>Gedung</label>
+        <input type="text" name="gedung" [(ngModel)]="newReport.gedung" placeholder="Nama Gedung">
+      </div>
+      <div class="form-group">
+        <label>Lantai</label>
+        <input type="text" name="lantai" [(ngModel)]="newReport.lantai" placeholder="Lantai ke-">
+      </div>
+    </div>
+
+    <!-- Row 3: Ruangan + Perangkat -->
+    <div class="form-row">
+      <div class="form-group">
+        <label>Ruangan</label>
+        <input type="text" name="ruangan" [(ngModel)]="newReport.ruangan" placeholder="Nama Ruangan">
+      </div>
+      <div class="form-group">
+        <label>Perangkat Terkait <span style="color:var(--muted);font-weight:400;">(Opsional)</span></label>
+        <select name="perangkat" [(ngModel)]="newReport.perangkatTerkait">
+          <option value="">— Tidak ada —</option>
+          <option *ngFor="let dev of filteredDevices" [value]="dev.name">
+            {{ dev.name }}{{ dev.ip ? ' · ' + dev.ip : '' }}
+          </option>
+          <option *ngIf="filteredDevices.length === 0" value="" disabled>Tidak ada perangkat di site ini</option>
+        </select>
+      </div>
     </div>
 
     <div class="form-group">
-      <label>Masalah</label>
-      <textarea [(ngModel)]="newReport.masalah" rows="2" required placeholder="Apa masalah yang ditemukan..."></textarea>
+      <label>Masalah <span style="color:#ef4444;font-weight:400;">*</span></label>
+      <textarea
+        rows="2"
+        name="masalah"
+        [(ngModel)]="newReport.masalah"
+        placeholder="Apa masalah yang ditemukan..."></textarea>
     </div>
 
+    <!-- Tindakan -->
     <div class="form-group">
-      <label>Tindakan / Solusi</label>
-      <textarea [(ngModel)]="newReport.tindakan" rows="2" required placeholder="Apa yang dilakukan untuk menyelesaikan..."></textarea>
+      <label>Tindakan / Solusi <span style="color:#ef4444;font-weight:400;">*</span></label>
+      <textarea
+        rows="2"
+        name="tindakan"
+        [(ngModel)]="newReport.tindakan"
+        placeholder="Tindakan yang dilakukan..."></textarea>
     </div>
 
-    <div class="form-group">
-      <label>Site</label>
-      <select [(ngModel)]="newReport.site" required>
-        <option value="Direktorat">Direktorat</option>
-        <option value="Gigi">Gigi</option>
-        <option value="Keperawatan">Keperawatan</option>
-        <option value="Gizi">Gizi</option>
-        <option value="Kebidanan">Kebidanan</option>
-      </select>
+    <!-- Info teknisi -->
+    <div style="font-size:11px;color:var(--muted);margin-bottom:14px;display:flex;align-items:center;gap:4px;">
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+      Dilaporkan oleh: <strong style="color:var(--ink);">{{ currentUser }}</strong>
     </div>
 
-    <div class="form-group">
-      <label>Prioritas Pekerjaan</label>
-      <select [(ngModel)]="newReport.priority" required>
-        <option value="Normal">Normal</option>
-        <option value="Urgent">Urgent</option>
-      </select>
-    </div>
-
+    <!-- Actions -->
     <div class="form-actions">
       <button type="button" class="btn btn-outline" (click)="closeModal()">Batal</button>
-      <button type="button" class="btn" (click)="addReport()">Simpan Laporan</button>
+      <button type="button" class="btn" (click)="saveReport()">
+        {{ isEditing ? 'Simpan Perubahan' : 'Simpan Laporan' }}
+      </button>
     </div>
   </div>
 </div>

@@ -1,11 +1,14 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
+import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
+import { ProjectService } from '../../services/project.service';
 
 export interface MonitoringDevice {
-  id: number;
+  _id?: string;
+  id: number | string;
   status: 'Online' | 'Offline';
   type: 'Access Point' | 'Switch' | 'Router' | 'Server';
   name: string;
@@ -14,6 +17,7 @@ export interface MonitoringDevice {
   mac: string;
   ip: string;
   client: string;
+  pingTime?: string;
   signal: string;
   gedung: string;
   lantai: string;
@@ -21,26 +25,65 @@ export interface MonitoringDevice {
   siteLocation: string;
 }
 
+export interface TrafficBar {
+  x: number;
+  txY: number;
+  txHeight: number;
+  rxY: number;
+  rxHeight: number;
+}
+
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent],
+  imports: [CommonModule, FormsModule, SidebarComponent, SiteDropdownComponent],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.css']
 })
-export class MonitoringComponent implements OnInit {
-  sites = ['Direktorat', 'Gigi', 'Keperawatan', 'Gizi', 'Kebidanan'];
+export class MonitoringComponent implements OnInit, OnDestroy {
+  sites: string[] = ['Direktorat', 'Gigi', 'Keperawatan', 'Gizi', 'Kebidanan'];
   selectedSite = 'Direktorat';
+  selectedSiteLabel = 'Direktorat';
   searchText = '';
   statusFilter = ''; // 'down' or empty
   showAddModal = false;
+
+  // ── Router Traffic State ───────────────────────────────────────────
+  routerTraffic = {
+    ip: '—',
+    interface: 'ether1-WAN',
+    source: '',
+    txMbps: 0,
+    rxMbps: 0,
+    txBps: 0,
+    rxBps: 0,
+    connected: false,
+    siteConfigured: false,
+    routerModel: ''
+  };
+
+  // Sparkline bar visualization & metrics
+  chartBars: TrafficBar[] = [];
+  scaleCeil: number = 10;
+  chartYUnit: string = 'Kbps';
+  lastRx: string = '0 Kbps';
+  lastTx: string = '0 Kbps';
+  peakRate: string = '0 Kbps';
+  avgRate: string = '0 Kbps';
+
+  private trafficHistory: { txBps: number; rxBps: number }[] = [];
+  private trafficTimer: any = null;
+  private deviceStatusTimer: any = null;
+  private rebootPollTimer: any = null;
+  readonly DEVICE_REFRESH_INTERVAL = 30000;
+  private readonly MAX_HISTORY = 45;
 
   // Pagination
   currentPage = 1;
   pageSize = 10;
 
   // Dropdown action menu
-  activeDropdown: number | null = null;
+  activeDropdown: number | string | null = null;
 
   // Detail modal
   selectedDevice: MonitoringDevice | null = null;
@@ -50,11 +93,14 @@ export class MonitoringComponent implements OnInit {
   showRebootModal = false;
   isRebooting = false;
   rebootTargetDevice: MonitoringDevice | null = null;
+  rebootUsername = '';
+  rebootPassword = '';
 
   // Management modal
   showManagementModal = false;
   managementTargetDevice: MonitoringDevice | null = null;
-  pingStatus: 'idle' | 'pinging' | 'success' = 'idle';
+  pingStatus: 'idle' | 'pinging' | 'success' | 'failed' = 'idle';
+  pingResultInfo: string = '';
 
   // Delete modal
   showDeleteModal = false;
@@ -68,11 +114,29 @@ export class MonitoringComponent implements OnInit {
   };
   private toastTimer: any = null;
 
+  // Edit modal
+  showEditModal = false;
+  isSavingEdit = false;
+  editingDevice: any = {};
+
   newDevice: any = this.getEmptyDevice();
 
-  constructor(private route: ActivatedRoute) { }
+  constructor(
+    private router: Router,
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef,
+    private projectService: ProjectService
+  ) {}
 
   ngOnInit() {
+    this.projectService.siteTree$.subscribe(tree => {
+      if (tree && tree.length > 0) {
+        this.sites = tree.flatMap(p => p.children ? p.children.map(s => s.siteValue!) : []);
+      }
+    });
+
+    // Ambil semua device
+    this.initDevices();
     this.route.queryParams.subscribe(params => {
       if (params['site'] && this.sites.includes(params['site'])) {
         this.selectedSite = params['site'];
@@ -80,7 +144,245 @@ export class MonitoringComponent implements OnInit {
       if (params['status']) {
         this.statusFilter = params['status'].toLowerCase();
       }
+      this.fetchRouterTraffic();
     });
+
+    // Inisialisasi perangkat dari backend (Database / Persistent Storage)
+    this.initDevices();
+
+    // Mulai polling data traffic router setiap 2 detik
+    this.trafficTimer = setInterval(() => {
+      this.fetchRouterTraffic();
+    }, 2000);
+
+    // Auto-refresh status perangkat setiap 30 detik
+    this.deviceStatusTimer = setInterval(() => {
+      this.refreshDeviceStatus();
+    }, this.DEVICE_REFRESH_INTERVAL);
+  }
+
+  ngOnDestroy() {
+    if (this.trafficTimer) {
+      clearInterval(this.trafficTimer);
+      this.trafficTimer = null;
+    }
+    if (this.deviceStatusTimer) {
+      clearInterval(this.deviceStatusTimer);
+      this.deviceStatusTimer = null;
+    }
+    if (this.rebootPollTimer) {
+      clearInterval(this.rebootPollTimer);
+      this.rebootPollTimer = null;
+    }
+  }
+
+// Inisialisasi perangkat + cek status real via ping
+  async initDevices() {
+    try {
+      const site = encodeURIComponent(this.selectedSite);
+      const res = await fetch(`http://localhost:3000/api/devices/status?site=${site}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.devices) {
+          this.devices = data.devices;
+          this.cdr.markForCheck();
+          return;
+        }
+      }
+    } catch (e) { /* fallback below */ }
+    try {
+      const fallback = await fetch('http://localhost:3000/api/devices');
+      if (fallback.ok) {
+        const data = await fallback.json();
+        if (data && data.devices) this.devices = data.devices;
+      }
+    } catch (e) {
+      console.warn('Gagal memuat perangkat:', e);
+    }
+    this.cdr.markForCheck();
+  }
+
+  onSiteSelected(event: { siteValue: string; buildingValue?: string; label: string }) {
+    this.selectedSiteLabel = event.label;
+    this.selectSite(event.siteValue);
+  }
+
+  // Refresh status + client count tanpa reload seluruh halaman (dipanggil tiap 30 detik)
+  async refreshDeviceStatus() {
+    if (this.devices.length === 0) return;
+    try {
+      const site = encodeURIComponent(this.selectedSite);
+      const res = await fetch(`http://localhost:3000/api/devices/status?site=${site}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data && data.devices) {
+        const updMap: Record<string, any> = {};
+        data.devices.forEach((d: any) => { updMap[String(d._id || d.id)] = d; });
+        this.devices = this.devices.map(d => {
+          const key = String(d._id || d.id);
+          if (updMap[key]) {
+            return { ...d, status: updMap[key].status as any, client: updMap[key].client, pingTime: updMap[key].pingTime };
+          }
+          return d;
+        });
+        this.cdr.markForCheck();
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  fetchRouterTraffic() {
+    fetch(`http://localhost:3000/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+      .then(res => res.json())
+      .then(data => {
+        // Hanya proses traffic jika site memang terkonfigurasi pada backend
+        if (data && data.siteConfigured && data.connected && typeof data.txMbps === 'number') {
+          this.routerTraffic.ip = data.ip || '—';
+          this.routerTraffic.interface = data.interface || '—';
+          this.routerTraffic.source = data.source || '';
+          this.routerTraffic.txMbps = data.txMbps;
+          this.routerTraffic.rxMbps = data.rxMbps;
+          this.routerTraffic.txBps = data.txBps || 0;
+          this.routerTraffic.rxBps = data.rxBps || 0;
+          this.routerTraffic.connected = true;
+          this.routerTraffic.siteConfigured = true;
+          this.routerTraffic.routerModel = data.routerModel || '';
+
+          this.updateTrafficMetrics(this.routerTraffic.txBps, this.routerTraffic.rxBps);
+        } else {
+          // Site belum terkonfigurasi atau tidak connected
+          this.routerTraffic.connected = false;
+          this.routerTraffic.siteConfigured = data?.siteConfigured || false;
+          this.routerTraffic.ip = data?.siteConfigured ? (data.ip || '—') : '—';
+          this.routerTraffic.interface = data?.siteConfigured ? (data.interface || '—') : '—';
+          this.routerTraffic.routerModel = data?.siteConfigured ? (data.routerModel || '') : '';
+          this.routerTraffic.txBps = 0;
+          this.routerTraffic.rxBps = 0;
+          this.routerTraffic.txMbps = 0;
+          this.routerTraffic.rxMbps = 0;
+          this.lastTx = '0 Kbps';
+          this.lastRx = '0 Kbps';
+          this.trafficHistory = [];
+          this.chartBars = [];
+        }
+        this.cdr.markForCheck();
+      })
+      .catch(() => {
+        this.routerTraffic.connected = false;
+        this.routerTraffic.siteConfigured = false;
+        this.lastTx = '0 Kbps';
+        this.lastRx = '0 Kbps';
+        this.trafficHistory = [];
+        this.chartBars = [];
+        this.cdr.markForCheck();
+      });
+  }
+
+  private updateTrafficMetrics(txBps: number, rxBps: number) {
+    this.trafficHistory.push({ txBps, rxBps });
+    if (this.trafficHistory.length > this.MAX_HISTORY) {
+      this.trafficHistory.shift();
+    }
+
+    this.lastTx = this.formatBps(txBps);
+    this.lastRx = this.formatBps(rxBps);
+
+    // Hitung peak dan average dari total traffic (tx + rx) di window riwayat
+    let maxCombinedBps = 0;
+    let sumCombinedBps = 0;
+    let maxSingleKbps = 0;
+
+    for (const p of this.trafficHistory) {
+      const combined = p.txBps + p.rxBps;
+      if (combined > maxCombinedBps) maxCombinedBps = combined;
+      sumCombinedBps += combined;
+
+      const txKbps = p.txBps / 1000;
+      const rxKbps = p.rxBps / 1000;
+      if (txKbps > maxSingleKbps) maxSingleKbps = txKbps;
+      if (rxKbps > maxSingleKbps) maxSingleKbps = rxKbps;
+    }
+
+    this.peakRate = this.formatBps(maxCombinedBps);
+    this.avgRate = this.formatBps(this.trafficHistory.length > 0 ? sumCombinedBps / this.trafficHistory.length : 0);
+
+    // Hitung dynamic ceiling scale
+    this.calculateScale(maxSingleKbps);
+
+    // Hitung SVG bar points
+    this.generateChartBars();
+  }
+
+  private calculateScale(rawMaxKbps: number) {
+    if (rawMaxKbps >= 1000) {
+      this.chartYUnit = 'Mbps';
+      const maxMbps = rawMaxKbps / 1000;
+      const target = maxMbps * 1.18;
+      const steps = [1, 2, 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
+      this.scaleCeil = steps.find(s => s >= target) || Math.ceil(target / 50) * 50;
+    } else if (rawMaxKbps >= 50) {
+      this.chartYUnit = 'Kbps';
+      const target = rawMaxKbps * 1.18;
+      const steps = [60, 80, 100, 150, 200, 300, 400, 500, 600, 800, 1000];
+      this.scaleCeil = steps.find(s => s >= target) || Math.ceil(target / 50) * 50;
+    } else if (rawMaxKbps >= 10) {
+      this.chartYUnit = 'Kbps';
+      const target = rawMaxKbps * 1.2;
+      const steps = [15, 20, 25, 30, 40, 50];
+      this.scaleCeil = steps.find(s => s >= target) || 50;
+    } else if (rawMaxKbps > 0) {
+      this.chartYUnit = 'Kbps';
+      const target = rawMaxKbps * 1.25;
+      const steps = [2, 4, 6, 8, 10];
+      this.scaleCeil = steps.find(s => s >= target) || 10;
+    } else {
+      this.chartYUnit = 'Kbps';
+      this.scaleCeil = 10;
+    }
+  }
+
+  private generateChartBars() {
+    const ceilKbps = this.chartYUnit === 'Mbps' ? this.scaleCeil * 1000 : this.scaleCeil;
+    const maxBarHeight = 78;
+    const rightMargin = 10;
+    const slotWidth = 20; // Ruang antar grup bar (rapat)
+
+    const bars: TrafficBar[] = [];
+    const count = this.trafficHistory.length;
+
+    for (let i = 0; i < count; i++) {
+      const item = this.trafficHistory[i];
+      const reverseIdx = count - 1 - i;
+      const x = 1000 - rightMargin - (reverseIdx * slotWidth);
+
+      const txKbps = item.txBps / 1000;
+      const rxKbps = item.rxBps / 1000;
+
+      const txRatio = ceilKbps > 0 ? Math.min(1, txKbps / ceilKbps) : 0;
+      const rxRatio = ceilKbps > 0 ? Math.min(1, rxKbps / ceilKbps) : 0;
+
+      const txHeight = txKbps > 0 ? Math.max(3, Math.round(txRatio * maxBarHeight)) : 0;
+      const rxHeight = rxKbps > 0 ? Math.max(3, Math.round(rxRatio * maxBarHeight)) : 0;
+
+      bars.push({
+        x,
+        txY: 90 - txHeight,
+        txHeight,
+        rxY: 90 - rxHeight,
+        rxHeight
+      });
+    }
+
+    this.chartBars = bars;
+  }
+
+  private formatBps(bps: number): string {
+    if (!bps || bps <= 0) return '0 Kbps';
+    const kbps = bps / 1000;
+    if (kbps < 1000) {
+      return `${kbps.toFixed(kbps < 10 ? 1 : 0)} Kbps`;
+    }
+    const mbps = kbps / 1000;
+    return `${mbps.toFixed(2)} Mbps`;
   }
 
   get isClient(): boolean {
@@ -142,7 +444,24 @@ export class MonitoringComponent implements OnInit {
 
   selectSite(site: string) {
     this.selectedSite = site;
+    if (this.newDevice) {
+      this.newDevice.siteLocation = site;
+    }
     this.currentPage = 1;
+    // Reset buffer riwayat traffic saat berpindah site
+    this.trafficHistory = [];
+    this.chartBars = [];
+    this.routerTraffic.txMbps = 0;
+    this.routerTraffic.rxMbps = 0;
+    this.routerTraffic.txBps = 0;
+    this.routerTraffic.rxBps = 0;
+    this.lastTx = '0 Kbps';
+    this.lastRx = '0 Kbps';
+    this.peakRate = '0 Kbps';
+    this.avgRate = '0 Kbps';
+    this.fetchRouterTraffic();
+    this.initDevices(); // Load devices for the new site
+    this.cdr.markForCheck();
   }
 
   clearStatusFilter() {
@@ -160,7 +479,7 @@ export class MonitoringComponent implements OnInit {
 
   // ── Actions & Modals ──────────────────────────────────────────
 
-  toggleDropdown(deviceId: number, event: Event) {
+  toggleDropdown(deviceId: number | string, event: Event) {
     event.stopPropagation();
     this.activeDropdown = this.activeDropdown === deviceId ? null : deviceId;
   }
@@ -185,6 +504,8 @@ export class MonitoringComponent implements OnInit {
   rebootDevice(device: MonitoringDevice) {
     this.activeDropdown = null;
     this.rebootTargetDevice = device;
+    this.rebootUsername = (device as any).sshUsername || '';
+    this.rebootPassword = (device as any).sshPassword || '';
     this.isRebooting = false;
     this.showRebootModal = true;
   }
@@ -193,30 +514,153 @@ export class MonitoringComponent implements OnInit {
     if (this.isRebooting) return;
     this.showRebootModal = false;
     this.rebootTargetDevice = null;
+    this.rebootUsername = '';
+    this.rebootPassword = '';
   }
 
   confirmReboot() {
     if (!this.rebootTargetDevice) return;
     this.isRebooting = true;
+    const dev = this.rebootTargetDevice;
 
-    setTimeout(() => {
-      this.isRebooting = false;
-      const dev = this.rebootTargetDevice;
-      this.showRebootModal = false;
+    // Panggil Backend Reboot API (Mendukung SSH & HTTP Web API TP-Link)
+    fetch('http://localhost:3000/api/device/reboot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        host: dev.ip,
+        port: (dev as any).sshPort || 22,
+        brand: dev.brand,
+        username: this.rebootUsername.trim() || undefined,
+        password: this.rebootPassword.trim() || undefined
+      })
+    })
+      .then(async (res) => {
+        const data = await res.json();
+        this.isRebooting = false;
+        this.showRebootModal = false;
 
-      // Catat ke audit log
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      this.activityLogs.unshift({
-        time: timeStr,
-        user: this.currentRole,
-        message: `melakukan reboot ${dev?.name}`,
-        status: 'Success'
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+        const methodStr = data.method === 'web-api' ? 'Web API' : 'SSH';
+
+        if (res.ok && data.success) {
+          this.activityLogs.unshift({
+            time: timeStr,
+            user: this.currentRole,
+            message: `melakukan reboot ${dev.name} via ${methodStr}`,
+            status: 'Success'
+          });
+          this.showToastNotification(`Reboot berhasil dikirim ke ${dev.name} (${dev.ip}). Memantau status...`, 'success');
+
+          // Tandai sementara Offline setelah reboot dikirim
+          const devIdx = this.devices.findIndex(d => (d._id || d.id) === (dev._id || dev.id));
+          if (devIdx !== -1) { (this.devices[devIdx] as any).status = 'Offline'; }
+          this.cdr.markForCheck();
+
+          // Poll status tiap 5 detik sampai Online kembali (maks 3 menit = 36x)
+          if (this.rebootPollTimer) clearInterval(this.rebootPollTimer);
+          let pollCount = 0;
+          const maxPolls = 36;
+          this.rebootPollTimer = setInterval(async () => {
+            pollCount++;
+            try {
+              const pingRes = await fetch('http://localhost:3000/api/ping-all', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ hosts: [dev.ip] })
+              });
+              const pingData = await pingRes.json();
+              const result = pingData.results && pingData.results[0];
+              if (result && result.alive) {
+                clearInterval(this.rebootPollTimer);
+                this.rebootPollTimer = null;
+                if (devIdx !== -1) {
+                  this.devices[devIdx].status = 'Online';
+                  (this.devices[devIdx] as any).pingTime = result.time;
+                }
+                const nowAfter = new Date();
+                const ts = String(nowAfter.getHours()).padStart(2,'0') + ':' + String(nowAfter.getMinutes()).padStart(2,'0');
+                this.activityLogs.unshift({ time: ts, user: 'System', message: dev.name + ' kembali Online setelah reboot (' + result.time + ')', status: 'Success' });
+                this.showToastNotification(dev.name + ' kembali Online! (' + result.time + ')', 'success');
+              }
+            } catch (e) { /* silent */ }
+            if (pollCount >= maxPolls) { clearInterval(this.rebootPollTimer); this.rebootPollTimer = null; }
+            this.cdr.markForCheck();
+          }, 5000);
+        } else {
+          // Jika SSH / Web API belum aktif atau password salah
+          this.activityLogs.unshift({
+            time: timeStr,
+            user: this.currentRole,
+            message: `gagal reboot ${dev.name} (${data.error || 'Connection failed'})`,
+            status: 'Alert'
+          });
+          this.showToastNotification(
+            `Gagal reboot ${dev.name}: ${data.error || 'Pastikan kredensial & akses perangkat benar'}`,
+            'alert'
+          );
+        }
+        this.rebootTargetDevice = null;
+      })
+      .catch((err) => {
+        this.isRebooting = false;
+        this.showRebootModal = false;
+        this.showToastNotification(
+          `Gagal menghubungi backend monitoring: ${err.message}`,
+          'alert'
+        );
+        this.rebootTargetDevice = null;
       });
+  }
 
-      this.showToastNotification(`Perangkat ${dev?.name} berhasil direboot.`, 'success');
-      this.rebootTargetDevice = null;
-    }, 1200);
+  // Edit Modal
+  openEditModal(device: MonitoringDevice) {
+    this.activeDropdown = null;
+    this.editingDevice = JSON.parse(JSON.stringify(device));
+    this.showEditModal = true;
+  }
+
+  closeEditModal() {
+    this.showEditModal = false;
+    this.editingDevice = {};
+    this.isSavingEdit = false;
+  }
+
+  async saveEditedDevice() {
+    if (!this.editingDevice || !this.editingDevice.name || !this.editingDevice.ip) {
+      this.showToastNotification('Nama dan IP wajib diisi', 'alert');
+      return;
+    }
+
+    this.isSavingEdit = true;
+    const devId = this.editingDevice._id || this.editingDevice.id;
+
+    try {
+      const res = await fetch(`http://localhost:3000/api/devices/${devId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(this.editingDevice)
+      });
+      const data = await res.json();
+      this.isSavingEdit = false;
+
+      if (res.ok && data.success) {
+        const idx = this.devices.findIndex(d => (d._id || d.id) === devId);
+        if (idx !== -1) {
+          this.devices[idx] = { ...this.devices[idx], ...this.editingDevice };
+        }
+        if (this.selectedDevice && (this.selectedDevice._id || this.selectedDevice.id) === devId) {
+          this.selectedDevice = { ...this.selectedDevice, ...this.editingDevice };
+        }
+        this.closeEditModal();
+        this.showToastNotification('Perangkat berhasil diperbarui.', 'success');
+      } else {
+        this.showToastNotification(data.error || 'Gagal menyimpan perubahan.', 'alert');
+      }
+    } catch (e: any) {
+      this.isSavingEdit = false;
+      this.showToastNotification(`Error: ${e.message}`, 'alert');
+    }
   }
 
   // Management Modal
@@ -224,6 +668,7 @@ export class MonitoringComponent implements OnInit {
     this.activeDropdown = null;
     this.managementTargetDevice = device;
     this.pingStatus = 'idle';
+    this.pingResultInfo = '';
     this.showManagementModal = true;
   }
 
@@ -231,17 +676,45 @@ export class MonitoringComponent implements OnInit {
     this.showManagementModal = false;
     this.managementTargetDevice = null;
     this.pingStatus = 'idle';
+    this.pingResultInfo = '';
   }
 
   testPing() {
+    if (!this.managementTargetDevice) return;
     this.pingStatus = 'pinging';
-    setTimeout(() => {
-      this.pingStatus = 'success';
-      this.showToastNotification(
-        `Ping ${this.managementTargetDevice?.ip}: RTT = 2ms, 0% packet loss (Reachable)`,
-        'info'
-      );
-    }, 800);
+    this.pingResultInfo = '';
+
+    fetch('http://localhost:3000/api/ping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host: this.managementTargetDevice.ip })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.alive) {
+          this.pingStatus = 'success';
+          this.pingResultInfo = `RTT ${data.time} · Status: Reachable`;
+          this.showToastNotification(
+            `Ping ${this.managementTargetDevice?.ip}: ${data.time} (Online)`,
+            'info'
+          );
+        } else {
+          this.pingStatus = 'failed';
+          this.pingResultInfo = `RTO / Unreachable · 100% loss`;
+          this.showToastNotification(
+            `Ping ${this.managementTargetDevice?.ip}: Gagal terjangkau (Offline/RTO)`,
+            'alert'
+          );
+        }
+      })
+      .catch(err => {
+        this.pingStatus = 'failed';
+        this.pingResultInfo = `Error koneksi backend`;
+        this.showToastNotification(
+          `Gagal menghubungi backend: ${err.message}`,
+          'alert'
+        );
+      });
   }
 
   openExternalManagement() {
@@ -263,10 +736,22 @@ export class MonitoringComponent implements OnInit {
     this.deleteTargetDevice = null;
   }
 
-  confirmDelete() {
+  async confirmDelete() {
     if (!this.deleteTargetDevice) return;
     const dev = this.deleteTargetDevice;
-    this.devices = this.devices.filter(d => d.id !== dev.id);
+    const devIdentifier = dev._id || dev.id;
+
+    // Hapus dari state lokal
+    this.devices = this.devices.filter(d => (d._id || d.id) !== devIdentifier);
+
+    // Kirim request DELETE ke backend
+    try {
+      await fetch(`http://localhost:3000/api/devices/${devIdentifier}`, {
+        method: 'DELETE'
+      });
+    } catch (e) {
+      console.warn('Gagal menghapus perangkat di backend:', e);
+    }
 
     // Catat ke audit log
     const now = new Date();
@@ -278,12 +763,13 @@ export class MonitoringComponent implements OnInit {
       status: 'Alert'
     });
 
-    if (this.selectedDevice?.id === dev.id) {
+    if (this.selectedDevice && ((this.selectedDevice._id && this.selectedDevice._id === dev._id) || this.selectedDevice.id === dev.id)) {
       this.closeDetailModal();
     }
     this.showDeleteModal = false;
     this.showToastNotification(`Perangkat "${dev.name}" telah dihapus.`, 'alert');
     this.deleteTargetDevice = null;
+    this.cdr.markForCheck();
   }
 
   // Toast Notification System
@@ -319,14 +805,14 @@ export class MonitoringComponent implements OnInit {
     this.showAddModal = false;
   }
 
-  saveDevice() {
+  async saveDevice() {
     if (!this.newDevice.nama || !this.newDevice.nama.trim()) {
       this.showToastNotification('Nama perangkat wajib diisi!', 'alert');
       return;
     }
 
     const nextId = this.devices.length > 0
-      ? Math.max(...this.devices.map(d => d.id)) + 1
+      ? Math.max(...this.devices.map(d => typeof d.id === 'number' ? d.id : 0)) + 1
       : 1;
 
     const deviceToAdd: MonitoringDevice = {
@@ -346,6 +832,31 @@ export class MonitoringComponent implements OnInit {
       siteLocation: this.newDevice.siteLocation || this.selectedSite
     };
 
+    // Kirim request POST ke backend agar tersimpan permanen
+    try {
+      const res = await fetch('http://localhost:3000/api/devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(deviceToAdd)
+      });
+      if (res.ok) {
+        const resData = await res.json();
+        if (resData && resData.device) {
+          deviceToAdd._id = resData.device._id;
+          deviceToAdd.id = resData.device.id || deviceToAdd.id;
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        this.showToastNotification(`Gagal menyimpan ke server: ${errData.error || 'Server error'}`, 'alert');
+        return;
+      }
+    } catch (e: any) {
+      console.error('Gagal menyimpan perangkat ke server backend:', e);
+      this.showToastNotification(`Gagal koneksi ke server backend: ${e.message}`, 'alert');
+      return;
+    }
+
+    // Tambah ke array lokal setelah berhasil disimpan ke server
     this.devices.unshift(deviceToAdd);
 
     // Catat ke audit log
@@ -358,8 +869,15 @@ export class MonitoringComponent implements OnInit {
       status: 'Normal'
     });
 
-    this.showToastNotification(`Perangkat ${deviceToAdd.name} berhasil ditambahkan.`, 'success');
+    // Pastikan siteLocation sinkron jika user sedang melihat site tertentu
+    if (this.selectedSite && deviceToAdd.siteLocation !== this.selectedSite) {
+      this.selectedSite = deviceToAdd.siteLocation;
+    }
+
+    this.showToastNotification(`Perangkat ${deviceToAdd.name} berhasil disimpan secara permanen.`, 'success');
     this.closeModal();
+    this.currentPage = 1;
+    this.cdr.markForCheck();
   }
 
   getEmptyDevice() {
@@ -388,58 +906,8 @@ export class MonitoringComponent implements OnInit {
     };
   }
 
-  // ── Dummy Devices Dataset (Across 5 Sites) ──────────────────────────
-  devices: MonitoringDevice[] = [
-    // Direktorat (15 devices)
-    { id: 1, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt1-R.Sekretariat', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0C:C0', ip: '172.16.10.2', client: '5', signal: '-65 dBm', gedung: 'GD. TLM', lantai: 'Lt. 1', ruangan: 'R. Sekretariat', siteLocation: 'Direktorat' },
-    { id: 2, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt1-R.Kemahasiswaan', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0D:10', ip: '172.16.10.3', client: '3', signal: '-58 dBm', gedung: 'GD. TLM', lantai: 'Lt. 1', ruangan: 'R. Kemahasiswaan', siteLocation: 'Direktorat' },
-    { id: 3, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt2-R.Keuangan', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0D:20', ip: '172.16.10.4', client: '7', signal: '-61 dBm', gedung: 'GD. TLM', lantai: 'Lt. 2', ruangan: 'R. Keuangan', siteLocation: 'Direktorat' },
-    { id: 4, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt2-R.Kepegawaian', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0D:30', ip: '172.16.10.5', client: '4', signal: '-63 dBm', gedung: 'GD. TLM', lantai: 'Lt. 2', ruangan: 'R. Kepegawaian', siteLocation: 'Direktorat' },
-    { id: 5, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt3-R.Direktur', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0D:40', ip: '172.16.10.6', client: '2', signal: '-55 dBm', gedung: 'GD. TLM', lantai: 'Lt. 3', ruangan: 'R. Direktur', siteLocation: 'Direktorat' },
-    { id: 6, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt3-Aula', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0D:50', ip: '172.16.10.7', client: '20', signal: '-60 dBm', gedung: 'GD. TLM', lantai: 'Lt. 3', ruangan: 'Aula', siteLocation: 'Direktorat' },
-    { id: 7, status: 'Offline', type: 'Access Point', name: 'AP-DIR-GD.TLM-Lt4-R.Rapat', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0D:60', ip: '172.16.10.8', client: '0', signal: '—', gedung: 'GD. TLM', lantai: 'Lt. 4', ruangan: 'R. Rapat', siteLocation: 'Direktorat' },
-    { id: 8, status: 'Online', type: 'Switch', name: 'SW-DIR-GD.TLM-Lt1-Core', brand: 'Ruijie', model: 'RG-S2910', mac: 'AA:BB:CC:DD:01:01', ip: '172.16.10.1', client: '—', signal: '—', gedung: 'GD. TLM', lantai: 'Lt. 1', ruangan: 'R. Server', siteLocation: 'Direktorat' },
-    { id: 9, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.SPMI-Lt1-R.SPMI', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0E:10', ip: '172.16.11.2', client: '6', signal: '-67 dBm', gedung: 'GD. SPMI', lantai: 'Lt. 1', ruangan: 'R. SPMI', siteLocation: 'Direktorat' },
-    { id: 10, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.SPMI-Lt2-R.Kerja', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0E:20', ip: '172.16.11.3', client: '4', signal: '-62 dBm', gedung: 'GD. SPMI', lantai: 'Lt. 2', ruangan: 'R. Kerja', siteLocation: 'Direktorat' },
-    { id: 11, status: 'Online', type: 'Switch', name: 'SW-DIR-GD.SPMI-Lt1', brand: 'Ruijie', model: 'RG-S1910', mac: 'AA:BB:CC:DD:02:01', ip: '172.16.11.1', client: '—', signal: '—', gedung: 'GD. SPMI', lantai: 'Lt. 1', ruangan: 'R. Panel', siteLocation: 'Direktorat' },
-    { id: 12, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.Perpus-Lt1-Lantai1', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0F:10', ip: '172.16.12.2', client: '15', signal: '-59 dBm', gedung: 'GD. Perpustakaan', lantai: 'Lt. 1', ruangan: 'Ruang Baca', siteLocation: 'Direktorat' },
-    { id: 13, status: 'Online', type: 'Access Point', name: 'AP-DIR-GD.Perpus-Lt2-Lantai2', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0F:20', ip: '172.16.12.3', client: '10', signal: '-64 dBm', gedung: 'GD. Perpustakaan', lantai: 'Lt. 2', ruangan: 'Ruang Referensi', siteLocation: 'Direktorat' },
-    { id: 14, status: 'Offline', type: 'Access Point', name: 'AP-DIR-GD.Perpus-Lt3-Lantai3', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:71:0F:30', ip: '172.16.12.4', client: '0', signal: '—', gedung: 'GD. Perpustakaan', lantai: 'Lt. 3', ruangan: 'Ruang Multimedia', siteLocation: 'Direktorat' },
-    { id: 15, status: 'Online', type: 'Switch', name: 'SW-DIR-GD.Perpus-Lt1', brand: 'Ruijie', model: 'RG-S1910', mac: 'AA:BB:CC:DD:03:01', ip: '172.16.12.1', client: '—', signal: '—', gedung: 'GD. Perpustakaan', lantai: 'Lt. 1', ruangan: 'R. Panel', siteLocation: 'Direktorat' },
+  // ── Perangkat Murni dari Database / Backend (Tidak Ada Data Dummy) ──
+  devices: MonitoringDevice[] = [];
 
-    // Gigi (5 devices)
-    { id: 16, status: 'Online', type: 'Access Point', name: 'AP-GIGI-Lt1-Klinik', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:72:0A:10', ip: '172.16.20.2', client: '8', signal: '-62 dBm', gedung: 'GD. Gigi', lantai: 'Lt. 1', ruangan: 'Klinik Gigi', siteLocation: 'Gigi' },
-    { id: 17, status: 'Online', type: 'Access Point', name: 'AP-GIGI-Lt1-Laboratorium', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:72:0A:20', ip: '172.16.20.3', client: '12', signal: '-58 dBm', gedung: 'GD. Gigi', lantai: 'Lt. 1', ruangan: 'Lab Phantom', siteLocation: 'Gigi' },
-    { id: 18, status: 'Online', type: 'Access Point', name: 'AP-GIGI-Lt2-R.Dosen', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:72:0A:30', ip: '172.16.20.4', client: '6', signal: '-60 dBm', gedung: 'GD. Gigi', lantai: 'Lt. 2', ruangan: 'R. Dosen Gigi', siteLocation: 'Gigi' },
-    { id: 19, status: 'Online', type: 'Access Point', name: 'AP-GIGI-Lt2-R.Kuliah1', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:72:0A:40', ip: '172.16.20.5', client: '18', signal: '-63 dBm', gedung: 'GD. Gigi', lantai: 'Lt. 2', ruangan: 'RK 201', siteLocation: 'Gigi' },
-    { id: 20, status: 'Online', type: 'Switch', name: 'SW-GIGI-Lt1-Dist', brand: 'Ruijie', model: 'RG-S2910', mac: 'AA:BB:CC:DD:04:01', ip: '172.16.20.1', client: '—', signal: '—', gedung: 'GD. Gigi', lantai: 'Lt. 1', ruangan: 'R. Server Gigi', siteLocation: 'Gigi' },
-
-    // Keperawatan (6 devices)
-    { id: 21, status: 'Online', type: 'Access Point', name: 'AP-KEP-Lt1-Auditorium', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:73:0A:10', ip: '172.16.30.2', client: '25', signal: '-57 dBm', gedung: 'GD. Keperawatan', lantai: 'Lt. 1', ruangan: 'Auditorium', siteLocation: 'Keperawatan' },
-    { id: 22, status: 'Online', type: 'Access Point', name: 'AP-KEP-Lt1-R.Admin', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:73:0A:20', ip: '172.16.30.3', client: '5', signal: '-64 dBm', gedung: 'GD. Keperawatan', lantai: 'Lt. 1', ruangan: 'R. Administrasi', siteLocation: 'Keperawatan' },
-    { id: 23, status: 'Online', type: 'Access Point', name: 'AP-KEP-Lt2-Lab.MiniHospital', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:73:0A:30', ip: '172.16.30.4', client: '14', signal: '-61 dBm', gedung: 'GD. Keperawatan', lantai: 'Lt. 2', ruangan: 'Mini Hospital', siteLocation: 'Keperawatan' },
-    { id: 24, status: 'Online', type: 'Access Point', name: 'AP-KEP-Lt2-R.Dosen', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:73:0A:40', ip: '172.16.30.5', client: '9', signal: '-59 dBm', gedung: 'GD. Keperawatan', lantai: 'Lt. 2', ruangan: 'R. Dosen', siteLocation: 'Keperawatan' },
-    { id: 25, status: 'Online', type: 'Access Point', name: 'AP-KEP-Lt3-Lab.Anatomi', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:73:0A:50', ip: '172.16.30.6', client: '11', signal: '-66 dBm', gedung: 'GD. Keperawatan', lantai: 'Lt. 3', ruangan: 'Lab Anatomi', siteLocation: 'Keperawatan' },
-    { id: 26, status: 'Online', type: 'Switch', name: 'SW-KEP-Lt1-Dist', brand: 'Ruijie', model: 'RG-S2910', mac: 'AA:BB:CC:DD:05:01', ip: '172.16.30.1', client: '—', signal: '—', gedung: 'GD. Keperawatan', lantai: 'Lt. 1', ruangan: 'R. Server KEP', siteLocation: 'Keperawatan' },
-
-    // Gizi (4 devices)
-    { id: 27, status: 'Online', type: 'Access Point', name: 'AP-GIZ-Lt1-Lab.Kuliner', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:74:0A:10', ip: '172.16.40.2', client: '8', signal: '-65 dBm', gedung: 'GD. Gizi', lantai: 'Lt. 1', ruangan: 'Lab Kuliner', siteLocation: 'Gizi' },
-    { id: 28, status: 'Online', type: 'Access Point', name: 'AP-GIZ-Lt1-R.Dosen', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:74:0A:20', ip: '172.16.40.3', client: '4', signal: '-60 dBm', gedung: 'GD. Gizi', lantai: 'Lt. 1', ruangan: 'R. Dosen Gizi', siteLocation: 'Gizi' },
-    { id: 29, status: 'Online', type: 'Access Point', name: 'AP-GIZ-Lt2-Lab.Dietetik', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:74:0A:30', ip: '172.16.40.4', client: '12', signal: '-62 dBm', gedung: 'GD. Gizi', lantai: 'Lt. 2', ruangan: 'Lab Dietetik', siteLocation: 'Gizi' },
-    { id: 30, status: 'Online', type: 'Switch', name: 'SW-GIZ-Lt1-Dist', brand: 'Ruijie', model: 'RG-S2910', mac: 'AA:BB:CC:DD:06:01', ip: '172.16.40.1', client: '—', signal: '—', gedung: 'GD. Gizi', lantai: 'Lt. 1', ruangan: 'R. Panel Gizi', siteLocation: 'Gizi' },
-
-    // Kebidanan (5 devices)
-    { id: 31, status: 'Online', type: 'Access Point', name: 'AP-KEB-Lt1-Lab.Kebidanan', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:75:0A:10', ip: '172.16.50.2', client: '16', signal: '-58 dBm', gedung: 'GD. Kebidanan', lantai: 'Lt. 1', ruangan: 'Lab Praktik', siteLocation: 'Kebidanan' },
-    { id: 32, status: 'Online', type: 'Access Point', name: 'AP-KEB-Lt1-R.Dosen', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:75:0A:20', ip: '172.16.50.3', client: '7', signal: '-63 dBm', gedung: 'GD. Kebidanan', lantai: 'Lt. 1', ruangan: 'R. Dosen', siteLocation: 'Kebidanan' },
-    { id: 33, status: 'Online', type: 'Access Point', name: 'AP-KEB-Lt2-R.Kuliah', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:75:0A:30', ip: '172.16.50.4', client: '22', signal: '-60 dBm', gedung: 'GD. Kebidanan', lantai: 'Lt. 2', ruangan: 'RK 302', siteLocation: 'Kebidanan' },
-    { id: 34, status: 'Online', type: 'Access Point', name: 'AP-KEB-Lt2-Lab.Konseling', brand: 'Ruijie', model: 'RG-AP180', mac: 'E8:BA:70:75:0A:40', ip: '172.16.50.5', client: '6', signal: '-65 dBm', gedung: 'GD. Kebidanan', lantai: 'Lt. 2', ruangan: 'Lab Konseling', siteLocation: 'Kebidanan' },
-    { id: 35, status: 'Online', type: 'Switch', name: 'SW-KEB-Lt1-Dist', brand: 'Ruijie', model: 'RG-S2910', mac: 'AA:BB:CC:DD:07:01', ip: '172.16.50.1', client: '—', signal: '—', gedung: 'GD. Kebidanan', lantai: 'Lt. 1', ruangan: 'R. Server KEB', siteLocation: 'Kebidanan' },
-  ];
-
-  activityLogs = [
-    { time: '14:32', user: 'Rian', message: 'melakukan reboot AP-Lab2-Lt3', status: 'Success' },
-    { time: '14:18', user: 'System', message: 'mendeteksi AP-DIR-GD.TLM-Lt4-R.Rapat offline', status: 'Alert' },
-    { time: '13:45', user: 'Budi', message: 'menambahkan perangkat baru: SW-Kebidanan-R12', status: 'Normal' },
-    { time: '12:20', user: 'System', message: 'backup konfigurasi router berhasil', status: 'Success' }
-  ];
+  activityLogs: any[] = [];
 }

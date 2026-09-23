@@ -29,7 +29,7 @@ export class PenggunaComponent {
 
   users = [
     {
-      name: 'Rian Saputra',
+      name: 'Jiwa Pramana',
       role: 'EOS',
       roleBg: '#E4E2F0',
       roleColor: '#3E3A6B',
@@ -37,45 +37,20 @@ export class PenggunaComponent {
       lastLogin: '2024-01-15 14:32'
     },
     {
-      name: 'Budi Santoso',
-      role: 'Client',
-      roleBg: '#FEF3C7',
-      roleColor: '#92400E',
-      site: 'Direktorat',
-      lastLogin: '2024-01-15 13:45'
-    },
-    {
-      name: 'Santi Wijaya',
-      role: 'Client',
-      roleBg: '#FEF3C7',
-      roleColor: '#92400E',
-      site: 'Keperawatan',
-      lastLogin: '2024-01-14 16:20'
-    },
-    {
-      name: 'Dr. Hendra',
+      name: 'Poltekkes',
       role: 'Client',
       roleBg: '#FEF3C7',
       roleColor: '#92400E',
       site: 'Semua site',
-      lastLogin: '2024-01-15 09:15'
-    },
-    {
-      name: 'Ahmad Fauzi',
-      role: 'Client',
-      roleBg: '#FEF3C7',
-      roleColor: '#92400E',
-      site: 'Gigi',
-      lastLogin: '2024-01-13 15:30'
+      lastLogin: '2024-01-15 13:45'
     }
   ];
 
   activityLogs = [
-    { time: '14:32', timeColor: '#3E3A6B', message: 'Rian Saputra login ke sistem' },
-    { time: '13:45', timeColor: '#6B7280', message: 'Budi Santoso menambahkan laporan baru' },
-    { time: '13:20', timeColor: '#6B7280', message: 'Santi Wijaya mengubah data perangkat AP-Keperawatan-Lt1' },
-    { time: '09:15', timeColor: '#92400E', message: 'Dr. Hendra melihat dashboard' },
-    { time: '08:30', timeColor: '#6B7280', message: 'Ahmad Fauzi melakukan reboot AP-Gigi-Lt2' }
+    { time: '14:32', timeColor: '#3E3A6B', message: 'Jiwa Pramana login ke sistem' },
+    { time: '13:45', timeColor: '#6B7280', message: 'Poltekkes menambahkan laporan baru' },
+    { time: '13:20', timeColor: '#6B7280', message: 'Poltekkes mengubah data perangkat AP-Keperawatan-Lt1' },
+    { time: '09:15', timeColor: '#92400E', message: 'Jiwa Pramana melihat dashboard' }
   ];
 
   closeModal() {

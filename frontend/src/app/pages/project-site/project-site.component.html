@@ -1,0 +1,319 @@
+<div id="app-shell">
+  <app-sidebar></app-sidebar>
+
+  <div class="main">
+    <!-- Page Header -->
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;">
+      <div>
+        <h2 style="font-size:18px;">Manajemen Project & Site</h2>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px;">
+          Kelola hierarki Instansi / Project, Cabang / Site, Gedung, hingga Lantai.
+        </div>
+      </div>
+      <button class="btn" (click)="openProjectModal()">
+        <span style="font-size:14px;margin-right:4px;">+</span> Tambah Project
+      </button>
+    </div>
+
+    <!-- Explorer Grid -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;height:calc(100vh - 120px);">
+
+      <!-- Panel 1: Projects -->
+      <div class="card" style="display:flex;flex-direction:column;overflow:hidden;padding:0;">
+        <div style="padding:14px 18px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#fafbfc;">
+          <span style="font-size:13px;font-weight:600;">Projects ({{ projects.length }})</span>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px;">
+          <div *ngFor="let proj of projects"
+               class="explorer-item"
+               [class.active]="selectedProject?._id === proj._id"
+               (click)="selectProject(proj)">
+            <div class="explorer-icon" [class.active]="selectedProject?._id === proj._id">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ proj.name }}</div>
+              <div style="font-size:11px;color:var(--muted);">{{ proj.sites?.length || 0 }} sites</div>
+            </div>
+            <div class="explorer-actions">
+              <button class="action-icon" (click)="openProjectModal(proj); $event.stopPropagation()" title="Edit">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+              </button>
+              <button class="action-icon danger" (click)="deleteProject(proj); $event.stopPropagation()" title="Hapus">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+              </button>
+            </div>
+          </div>
+          <div *ngIf="projects.length === 0" class="empty-panel">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px;">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+            </svg>
+            Belum ada project
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel 2: Sites -->
+      <div class="card" style="display:flex;flex-direction:column;overflow:hidden;padding:0;">
+        <div style="padding:14px 18px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#fafbfc;">
+          <span style="font-size:13px;font-weight:600;">
+            Sites <span *ngIf="selectedProject" style="color:var(--muted);font-weight:400;">— {{ selectedProject.name }}</span>
+          </span>
+          <button *ngIf="selectedProject" class="action-icon" (click)="openSiteModal()" title="Tambah Site" style="background:var(--btn);color:#fff;border-radius:6px;padding:4px 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px;">
+          <div *ngIf="!selectedProject" class="empty-panel">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px;">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>
+            </svg>
+            Pilih project untuk melihat sites
+          </div>
+          <ng-container *ngIf="selectedProject">
+            <div *ngFor="let site of selectedProject.sites"
+                 class="explorer-item"
+                 [class.active]="selectedSite?._id === site._id"
+                 (click)="selectSite(site)">
+              <div class="explorer-icon site-icon" [class.active]="selectedSite?._id === site._id">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ site.name }}</div>
+                <div style="font-size:11px;color:var(--muted);">
+                  {{ site.gedungList?.length || 0 }} gedung
+                  <span *ngIf="site.routerConfig?.host" style="color:#2563EB;font-weight:500;"> · Router ✓</span>
+                </div>
+              </div>
+              <div class="explorer-actions">
+                <button class="action-icon" (click)="openSiteModal(site); $event.stopPropagation()" title="Edit">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
+                <button class="action-icon danger" (click)="deleteSite(site); $event.stopPropagation()" title="Hapus">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                </button>
+              </div>
+            </div>
+            <div *ngIf="!selectedProject.sites || selectedProject.sites.length === 0" class="empty-panel">
+              Belum ada site
+            </div>
+          </ng-container>
+        </div>
+      </div>
+
+      <!-- Panel 3: Gedung & Lantai -->
+      <div class="card" style="display:flex;flex-direction:column;overflow:hidden;padding:0;">
+        <div style="padding:14px 18px;border-bottom:0.5px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:#fafbfc;">
+          <span style="font-size:13px;font-weight:600;">
+            Gedung <span *ngIf="selectedSite" style="color:var(--muted);font-weight:400;">— {{ selectedSite.name }}</span>
+          </span>
+          <button *ngIf="selectedSite" class="action-icon" (click)="openGedungModal()" title="Tambah Gedung" style="background:var(--btn);color:#fff;border-radius:6px;padding:4px 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+        <div style="flex:1;overflow-y:auto;padding:8px;">
+          <div *ngIf="!selectedSite" class="empty-panel">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--muted)" stroke-width="1.5" style="opacity:0.4;margin-bottom:8px;">
+              <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="9" y1="22" x2="9" y2="2"></line>
+            </svg>
+            Pilih site untuk mengelola gedung
+          </div>
+          <ng-container *ngIf="selectedSite">
+            <div *ngFor="let gedung of selectedSite.gedungList" style="margin-bottom:6px;">
+              <div class="explorer-item"
+                   [class.active]="selectedGedung?._id === gedung._id"
+                   (click)="selectGedung(gedung)">
+                <div class="explorer-icon gedung-icon" [class.active]="selectedGedung?._id === gedung._id">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect><line x1="9" y1="22" x2="9" y2="2"></line><line x1="15" y1="22" x2="15" y2="2"></line><line x1="4" y1="12" x2="20" y2="12"></line></svg>
+                </div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;font-weight:600;color:var(--ink);">{{ gedung.name }}</div>
+                  <div style="font-size:11px;color:var(--muted);">{{ gedung.floors?.length || 0 }} lantai</div>
+                </div>
+                <div class="explorer-actions">
+                  <button class="action-icon" (click)="openGedungModal(gedung); $event.stopPropagation()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                  </button>
+                  <button class="action-icon danger" (click)="deleteGedung(gedung); $event.stopPropagation()">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Floors inside active Gedung -->
+              <div *ngIf="selectedGedung?._id === gedung._id" style="margin-left:40px;padding-left:14px;border-left:1.5px solid var(--border);margin-top:4px;margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Daftar Lantai</span>
+                  <button class="action-icon" (click)="openLantaiModal()" style="padding:2px;" title="Tambah Lantai">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  </button>
+                </div>
+                <div *ngFor="let floor of gedung.floors" style="display:flex;justify-content:space-between;align-items:center;font-size:12.5px;color:var(--ink);padding:5px 8px;border-radius:4px;" class="floor-row">
+                  <span>{{ floor.name }}</span>
+                  <button class="action-icon danger" style="padding:0;opacity:0.4;" (click)="deleteLantai(floor)">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </button>
+                </div>
+                <div *ngIf="!gedung.floors || gedung.floors.length === 0" style="font-size:11.5px;color:var(--muted);padding:4px 0;">Belum ada lantai</div>
+              </div>
+            </div>
+
+            <div *ngIf="!selectedSite.gedungList || selectedSite.gedungList.length === 0" class="empty-panel">
+              Belum ada gedung
+            </div>
+          </ng-container>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================== -->
+<!-- MODALS -->
+<!-- ============================================== -->
+
+<!-- Project Modal -->
+<div class="modal-overlay active" *ngIf="showProjectModal" (click)="showProjectModal = false">
+  <div class="modal-box" style="max-width:440px;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title">{{ isEditing ? 'Edit Project' : 'Tambah Project Baru' }}</h3>
+      <button class="modal-close" (click)="showProjectModal = false">✕</button>
+    </div>
+    <form (ngSubmit)="saveProject()">
+      <div class="form-group">
+        <label>Nama Project / Instansi</label>
+        <input type="text" [(ngModel)]="projectForm.name" name="name" required placeholder="misal: Universitas Udayana">
+      </div>
+      <div class="form-group">
+        <label>Kode Singkat (opsional)</label>
+        <input type="text" [(ngModel)]="projectForm.code" name="code" placeholder="misal: UNUD">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" style="background:transparent;color:var(--ink);border:1px solid var(--border);" (click)="showProjectModal = false">Batal</button>
+        <button type="submit" class="btn" [disabled]="isSaving">
+          {{ isSaving ? 'Sedang Menyimpan...' : (isEditing ? 'Simpan Perubahan' : 'Tambah Project') }}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Site Modal -->
+<div class="modal-overlay active" *ngIf="showSiteModal" (click)="showSiteModal = false">
+  <div class="modal-box" style="max-width:500px;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title">{{ isEditing ? 'Edit Site' : 'Tambah Site Baru' }}</h3>
+      <button class="modal-close" (click)="showSiteModal = false">✕</button>
+    </div>
+    <form (ngSubmit)="saveSite()">
+      <div class="form-group">
+        <label>Nama Site / Cabang</label>
+        <input type="text" [(ngModel)]="siteForm.name" name="siteName" required placeholder="misal: Unud Denpasar">
+      </div>
+
+      <div style="margin-top:18px;margin-bottom:12px;font-size:12px;font-weight:600;color:var(--muted);border-bottom:0.5px solid var(--border);padding-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
+        Konfigurasi Router MikroTik (Opsional)
+      </div>
+      <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">
+        Isi untuk memantau trafik live RouterOS API di site ini.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Host / IP</label>
+          <input type="text" [(ngModel)]="siteForm.routerConfig.host" name="host" placeholder="misal: 223.27.147.18">
+        </div>
+        <div class="form-group">
+          <label>API Port</label>
+          <input type="number" [(ngModel)]="siteForm.routerConfig.port" name="port">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" [(ngModel)]="siteForm.routerConfig.user" name="user">
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" [(ngModel)]="siteForm.routerConfig.password" name="password">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Monitor Interface</label>
+          <input type="text" [(ngModel)]="siteForm.routerConfig.interface" name="interface" placeholder="misal: ether1">
+        </div>
+        <div class="form-group">
+          <label>Router Model</label>
+          <input type="text" [(ngModel)]="siteForm.routerConfig.routerModel" name="routerModel" placeholder="misal: RB450Gx4">
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn" style="background:transparent;color:var(--ink);border:1px solid var(--border);" (click)="showSiteModal = false">Batal</button>
+        <button type="submit" class="btn">{{ isEditing ? 'Simpan' : 'Tambah Site' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Gedung Modal -->
+<div class="modal-overlay active" *ngIf="showGedungModal" (click)="showGedungModal = false">
+  <div class="modal-box" style="max-width:400px;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title">{{ isEditing ? 'Edit Gedung' : 'Tambah Gedung Baru' }}</h3>
+      <button class="modal-close" (click)="showGedungModal = false">✕</button>
+    </div>
+    <form (ngSubmit)="saveGedung()">
+      <div class="form-group">
+        <label>Nama Gedung</label>
+        <input type="text" [(ngModel)]="gedungForm.name" name="gName" required placeholder="misal: Gedung Rektorat">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" style="background:transparent;color:var(--ink);border:1px solid var(--border);" (click)="showGedungModal = false">Batal</button>
+        <button type="submit" class="btn">{{ isEditing ? 'Simpan' : 'Tambah' }}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Lantai Modal -->
+<div class="modal-overlay active" *ngIf="showLantaiModal" (click)="showLantaiModal = false">
+  <div class="modal-box" style="max-width:380px;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title">Tambah Lantai</h3>
+      <button class="modal-close" (click)="showLantaiModal = false">✕</button>
+    </div>
+    <form (ngSubmit)="saveLantai()">
+      <div class="form-group">
+        <label>Nama Lantai</label>
+        <input type="text" [(ngModel)]="lantaiForm.name" name="lName" required placeholder="misal: Lantai 2">
+      </div>
+      <div class="form-actions">
+        <button type="button" class="btn" style="background:transparent;color:var(--ink);border:1px solid var(--border);" (click)="showLantaiModal = false">Batal</button>
+        <button type="submit" class="btn">Tambah</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay active" *ngIf="showConfirmModal" (click)="showConfirmModal = false">
+  <div class="modal-box" style="max-width:380px;" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3 class="modal-title" style="color:var(--ink);">Konfirmasi Hapus</h3>
+      <button class="modal-close" (click)="showConfirmModal = false">✕</button>
+    </div>
+    <div style="padding:10px 0 20px; font-size:13px; color:var(--ink);">
+      {{ confirmMessage }}
+    </div>
+    <div class="form-actions" style="border-top:none; padding-top:0;">
+      <button type="button" class="btn" style="background:transparent;color:var(--ink);border:1px solid var(--border);" (click)="showConfirmModal = false">Batal</button>
+      <button type="button" class="btn" style="background:#DC2626;color:white;" (click)="confirmDelete()">Hapus</button>
+    </div>
+  </div>
+</div>

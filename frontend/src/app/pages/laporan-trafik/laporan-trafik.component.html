@@ -7,18 +7,19 @@
         <h2 style="font-size:15px;">Laporan Trafik</h2>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">Laporan historis jaringan · {{ selectedSite }}</div>
       </div>
-      <button class="btn">Ekspor PDF</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-outline" (click)="exportData('json')">Ekspor JSON</button>
+        <button class="btn" (click)="exportData('csv')">Ekspor CSV</button>
+      </div>
     </div>
 
-    <!-- Site tabs -->
-    <div style="display:flex;gap:6px;margin-bottom:14px;">
-      <button *ngFor="let site of sites"
-              (click)="onSiteChange(site)"
-              [class.btn]="selectedSite === site"
-              [class.btn-outline]="selectedSite !== site"
-              style="padding:6px 14px;font-size:12px;">
-        {{ site }}
-      </button>
+    <!-- Site dropdown -->
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <app-site-dropdown
+        [selectedLabel]="selectedSiteLabel"
+        (siteSelected)="onSiteDropdownSelected($event)">
+      </app-site-dropdown>
+      <span style="font-size:12px;color:var(--muted);">Site aktif: <strong>{{ selectedSite }}</strong></span>
     </div>
 
     <!-- Period filter -->
@@ -90,20 +91,30 @@
     <!-- Bandwidth trend chart -->
     <div class="card" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:500;">Trend bandwidth <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ selectedPeriod }}</span></div>
+        <div style="font-size:12px;font-weight:500;display:flex;align-items:center;gap:8px;">
+          <span>Trend bandwidth <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ selectedPeriod }}</span></span>
+          <span *ngIf="isLiveRouterConnected" class="badge badge-ok" style="font-size:10px;padding:1px 6px;">
+            Live MikroTik Terhubung
+          </span>
+        </div>
+        <div *ngIf="isLiveRouterConnected" class="mono" style="font-size:11px;color:#6B7280;">
+          {{ liveRouterModel }} ({{ liveRouterIp }})
+        </div>
       </div>
 
       <div style="display:flex;gap:10px;">
-        <div style="width:25px; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; font-size:10px; color:#9CA3AF; font-family:'Work Sans',sans-serif; padding-bottom:20px;">
-          <span>500</span>
-          <span>375</span>
-          <span>250</span>
-          <span>125</span>
+        <div style="width:25px; display:flex; flex-direction:column; justify-content:space-between; align-items:flex-end; font-size:10px; color:#9CA3AF; font-family:'Work Sans',sans-serif; padding-bottom:20px; flex-shrink:0;">
+          <span>300</span>
+          <span>225</span>
+          <span>150</span>
+          <span>75</span>
           <span>0</span>
         </div>
 
-        <div style="flex-grow:1; position:relative;">
-          <svg width="100%" height="150" viewBox="0 0 100 150" preserveAspectRatio="none" style="overflow:visible;">
+        <div style="flex-grow:1; overflow-x:auto; padding-bottom:5px;">
+          <div style="min-width: 500px;">
+            <div style="position:relative;">
+              <svg width="100%" height="150" viewBox="0 0 100 150" preserveAspectRatio="none" style="overflow:visible;">
             <defs>
               <linearGradient id="txGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stop-color="#3E3A6B" stop-opacity="0.5"/>
@@ -132,59 +143,14 @@
             <path [attr.d]="rxPath" fill="none" stroke="#C4442E" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
           </svg>
         </div>
+        
+        <!-- X-axis labels (rendered completely) -->
+        <div style="margin-top:4px;display:flex;justify-content:space-between;font-size:10px;color:#9CA3AF;font-family:'Work Sans',sans-serif;">
+          <span *ngFor="let label of chartLabels" style="white-space:nowrap;">{{ label }}</span>
+        </div>
       </div>
-
-      <!-- X-axis labels -->
-      <div style="margin-top:4px;margin-left:35px;display:flex;justify-content:space-between;font-size:10px;color:#9CA3AF;font-family:'Work Sans',sans-serif;">
-        <ng-container [ngSwitch]="selectedPeriod">
-          <!-- Harian: tampilkan beberapa jam -->
-          <ng-container *ngSwitchCase="'harian'">
-            <span>00:00</span>
-            <span>06:00</span>
-            <span>12:00</span>
-            <span>18:00</span>
-            <span>23:00</span>
-          </ng-container>
-
-          <!-- Mingguan: tampilkan hari -->
-          <ng-container *ngSwitchCase="'mingguan'">
-            <span>Sen</span>
-            <span>Sel</span>
-            <span>Rab</span>
-            <span>Kam</span>
-            <span>Jum</span>
-            <span>Sab</span>
-            <span>Min</span>
-          </ng-container>
-
-          <!-- Bulanan: tampilkan minggu -->
-          <ng-container *ngSwitchCase="'bulanan'">
-            <span>Mg 1</span>
-            <span>Mg 2</span>
-            <span>Mg 3</span>
-            <span>Mg 4</span>
-            <span>Mg 5</span>
-          </ng-container>
-
-          <!-- Tahunan: tampilkan bulan -->
-          <ng-container *ngSwitchCase="'tahunan'">
-            <span>Jan</span>
-            <span>Mar</span>
-            <span>Mei</span>
-            <span>Jul</span>
-            <span>Sep</span>
-          </ng-container>
-
-          <!-- Custom: tampilkan label dinamis berdasarkan data -->
-          <ng-container *ngSwitchCase="'custom'">
-            <span *ngIf="chartLabels.length > 0">{{ chartLabels[0] }}</span>
-            <span *ngIf="chartLabels.length > 2">{{ chartLabels[Math.floor(chartLabels.length / 4)] }}</span>
-            <span *ngIf="chartLabels.length > 1">{{ chartLabels[Math.floor(chartLabels.length / 2)] }}</span>
-            <span *ngIf="chartLabels.length > 3">{{ chartLabels[Math.floor(chartLabels.length * 3 / 4)] }}</span>
-            <span *ngIf="chartLabels.length > 0">{{ chartLabels[chartLabels.length - 1] }}</span>
-          </ng-container>
-        </ng-container>
-      </div>
+    </div>
+  </div>
 
       <!-- Statistics -->
       <div style="margin-top:12px;display:flex;flex-direction:column;gap:4px;background:var(--paper);padding:8px 12px;border-radius:6px;border:0.5px solid var(--border);">

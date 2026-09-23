@@ -1,8 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router, ActivatedRoute } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
+import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 
 interface TrafficData {
   label: string;
@@ -32,11 +33,11 @@ interface DowntimeEvent {
 @Component({
   selector: 'app-laporan-trafik',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent],
+  imports: [CommonModule, FormsModule, SidebarComponent, SiteDropdownComponent],
   templateUrl: './laporan-trafik.component.html',
   styleUrls: ['./laporan-trafik.component.css']
 })
-export class LaporanTrafikComponent implements OnInit {
+export class LaporanTrafikComponent implements OnInit, OnDestroy {
   sites = ['Direktorat', 'Gigi', 'Keperawatan', 'Gizi', 'Kebidanan'];
   periods = [
     { value: 'harian', label: 'Harian' },
@@ -46,7 +47,8 @@ export class LaporanTrafikComponent implements OnInit {
     { value: 'custom', label: 'Custom' }
   ];
 
-  selectedSite = 'Direktorat';
+  selectedSite = 'Gizi';
+  selectedSiteLabel = 'Gizi';
   selectedPeriod = 'harian';
 
   // Date range filter
@@ -82,15 +84,27 @@ export class LaporanTrafikComponent implements OnInit {
   txAreaPath = '';
   rxPath = '';
   rxAreaPath = '';
+  yAxisMax = 500;
+  yAxisStep = 125;
+
+  // Live Router Traffic Data
+  isLiveRouterConnected = false;
+  liveTrafficTimer: any = null;
+  liveTxMbps = 0;
+  liveRxMbps = 0;
+  liveRouterIp = '';
+  liveRouterModel = '';
+  realHistoryLoaded = false;
 
   constructor(
     private router: Router,
-    private route: ActivatedRoute
+    private route: ActivatedRoute,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit() {
     // Set today's date
-    const now = new Date('2026-09-09');
+    const now = new Date();
     this.today = this.formatDateForInput(now);
 
     // Set default date range (today)
@@ -99,12 +113,12 @@ export class LaporanTrafikComponent implements OnInit {
 
     // Baca query parameters
     this.route.queryParams.subscribe(params => {
-      this.selectedSite = params['site'] || 'Direktorat';
+      this.selectedSite = params['site'] || 'Gizi';
       this.selectedPeriod = params['period'] || 'harian';
 
       // Validasi site
       if (!this.sites.includes(this.selectedSite)) {
-        this.selectedSite = 'Direktorat';
+        this.selectedSite = 'Gizi';
       }
 
       // Validasi period
@@ -125,14 +139,152 @@ export class LaporanTrafikComponent implements OnInit {
         this.setDefaultDateRange();
       }
 
-      this.generateAllDowntimeEvents();
-      this.updateData();
+      this.fetchRealHistoryAndEvents();
+      this.fetchLiveTraffic();
     });
+
+    // Polling live traffic setiap 3 detik
+    this.liveTrafficTimer = setInterval(() => {
+      this.fetchLiveTraffic();
+    }, 3000);
+  }
+
+  ngOnDestroy() {
+    if (this.liveTrafficTimer) {
+      clearInterval(this.liveTrafficTimer);
+      this.liveTrafficTimer = null;
+    }
+  }
+
+  fetchRealHistoryAndEvents() {
+    // 1. Fetch downtime events from backend
+    fetch(`http://localhost:3000/api/router/downtime-events?site=${encodeURIComponent(this.selectedSite)}`)
+      .then(res => res.json())
+      .then(res => {
+        if (res && res.success && Array.isArray(res.events)) {
+          this.allDowntimeEvents = res.events.map((e: any) => ({
+            site: e.site,
+            start: e.start,
+            duration: e.duration,
+            color: e.color || '#C4442E',
+            end: e.end || '—',
+            reported: !!e.reported,
+            timestamp: new Date(e.startTimeIso || e.start)
+          }));
+        } else {
+          this.allDowntimeEvents = [];
+        }
+        this.filterDowntimeLog();
+      })
+      .catch(() => {
+        this.allDowntimeEvents = [];
+        this.filterDowntimeLog();
+      });
+
+    // 2. Fetch traffic history (pre-aggregated per period) dari backend
+    const params = new URLSearchParams({
+      site: this.selectedSite,
+      period: this.selectedPeriod
+    });
+    if (this.startDate) params.set('startDate', this.startDate);
+    if (this.endDate) params.set('endDate', this.endDate);
+
+    fetch(`http://localhost:3000/api/router/history?${params.toString()}`)
+      .then(res => res.json())
+      .then(res => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          this.realHistoryLoaded = true;
+          this.processRealHistory(res.data);
+        } else {
+          this.realHistoryLoaded = false;
+          this.chartData = [];
+          this.chartLabels = [];
+          this.txCurrent = 0; this.txAverage = 0; this.txMaximum = 0;
+          this.rxCurrent = 0; this.rxAverage = 0; this.rxMaximum = 0;
+          this.generateUptimeData();
+          this.cdr.markForCheck();
+        }
+      })
+      .catch(() => {
+        this.realHistoryLoaded = false;
+        this.chartData = [];
+        this.chartLabels = [];
+        this.cdr.markForCheck();
+      });
+  }
+
+  processRealHistory(aggregated: any[]) {
+    // Data sudah diaggregasi oleh backend — langsung pakai
+    this.chartData = aggregated.map((d: any) => ({
+      label: d.label,
+      tx: Number(d.tx) || 0,
+      rx: Number(d.rx) || 0
+    }));
+    this.chartLabels = this.chartData.map(d => d.label);
+    this.calculateStatistics();
+    this.generateUptimeData();
+    this.generateChartPaths();
+    this.cdr.markForCheck();
+  }
+
+  exportData(format: 'json' | 'csv' = 'csv') {
+    const params = new URLSearchParams({
+      site: this.selectedSite,
+      period: this.selectedPeriod,
+      format
+    });
+    if (this.startDate) params.set('startDate', this.startDate);
+    if (this.endDate) params.set('endDate', this.endDate);
+
+    window.open(`http://localhost:3000/api/router/history/export?${params.toString()}`, '_blank');
+  }
+
+
+  fetchLiveTraffic() {
+    fetch(`http://localhost:3000/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.siteConfigured && data.connected && typeof data.txMbps === 'number') {
+          this.isLiveRouterConnected = true;
+          this.liveTxMbps = data.txMbps;
+          this.liveRxMbps = data.rxMbps;
+          this.liveRouterIp = data.ip || '';
+          this.liveRouterModel = data.routerModel || '';
+
+          // Jika periode harian dan site terkonfigurasi (Gizi), sinkronkan data point terakhir & metrik current
+          if (this.selectedPeriod === 'harian' && this.chartData.length > 0) {
+            const lastPoint = this.chartData[this.chartData.length - 1];
+            lastPoint.tx = this.liveTxMbps;
+            lastPoint.rx = this.liveRxMbps;
+            this.calculateStatistics();
+            this.generateChartPaths();
+          }
+        } else {
+          this.isLiveRouterConnected = false;
+          this.liveTxMbps = 0;
+          this.liveRxMbps = 0;
+          this.liveRouterIp = '';
+          this.liveRouterModel = '';
+        }
+        this.cdr.markForCheck();
+      })
+      .catch(() => {
+        this.isLiveRouterConnected = false;
+        this.cdr.markForCheck();
+      });
   }
 
   onSiteChange(site: string) {
     this.selectedSite = site;
+    this.isLiveRouterConnected = false;
     this.updateQueryParams();
+    this.fetchRealHistoryAndEvents();
+    this.fetchLiveTraffic();
+  }
+
+  onSiteDropdownSelected(event: { siteValue: string; buildingValue?: string; label: string }) {
+    this.selectedSiteLabel = event.label;
+    this.onSiteChange(event.siteValue);
   }
 
   onPeriodChange(period?: string) {
@@ -145,6 +297,7 @@ export class LaporanTrafikComponent implements OnInit {
       this.setDefaultDateRange();
       this.updateQueryParams();
     }
+    this.fetchRealHistoryAndEvents();
   }
 
   applyCustomRange() {
@@ -161,10 +314,11 @@ export class LaporanTrafikComponent implements OnInit {
     // Set ke custom mode
     this.selectedPeriod = 'custom';
     this.updateQueryParams();
+    this.fetchRealHistoryAndEvents();
   }
 
   applyQuickPreset(days: number) {
-    const end = new Date('2026-09-09');
+    const end = new Date();
     const start = new Date(end);
     start.setDate(start.getDate() - days + 1);
 
@@ -175,7 +329,7 @@ export class LaporanTrafikComponent implements OnInit {
   }
 
   setDefaultDateRange() {
-    const now = new Date('2026-09-09');
+    const now = new Date();
 
     switch (this.selectedPeriod) {
       case 'harian':
@@ -228,320 +382,144 @@ export class LaporanTrafikComponent implements OnInit {
     });
   }
 
-  updateData() {
-    this.generateChartData();
-    this.calculateStatistics();
-    this.generateUptimeData();
-    this.filterDowntimeLog();
-    this.generateChartPaths();
-  }
 
-  generateChartData() {
-    const baseMultipliers: { [key: string]: { tx: number; rx: number } } = {
-      'Direktorat': { tx: 1.0, rx: 0.45 },
-      'Gigi': { tx: 0.6, rx: 0.35 },
-      'Keperawatan': { tx: 0.8, rx: 0.40 },
-      'Gizi': { tx: 0.5, rx: 0.30 },
-      'Kebidanan': { tx: 0.7, rx: 0.38 }
-    };
 
-    const multiplier = baseMultipliers[this.selectedSite];
 
-    switch (this.selectedPeriod) {
-      case 'harian':
-        this.generateHourlyData(multiplier);
-        break;
-      case 'mingguan':
-        this.generateWeeklyData(multiplier);
-        break;
-      case 'bulanan':
-        this.generateMonthlyData(multiplier);
-        break;
-      case 'tahunan':
-        this.generateYearlyData(multiplier);
-        break;
-      case 'custom':
-        this.generateCustomRangeData(multiplier);
-        break;
-    }
-  }
 
-  generateHourlyData(multiplier: { tx: number; rx: number }) {
-    this.chartData = [];
-    this.chartLabels = [];
-
-    for (let hour = 0; hour < 24; hour++) {
-      const label = `${hour.toString().padStart(2, '0')}:00`;
-
-      // Pola trafik: rendah malam (0-5), naik pagi (6-8), tinggi siang (9-16), turun sore-malam (17-23)
-      let baseValue = 300;
-      if (hour >= 0 && hour < 6) baseValue = 150 + hour * 20;
-      else if (hour >= 6 && hour < 9) baseValue = 300 + (hour - 6) * 50;
-      else if (hour >= 9 && hour < 17) baseValue = 450 + Math.sin(hour * 0.5) * 80;
-      else baseValue = 450 - (hour - 16) * 30;
-
-      const variance = (Math.random() - 0.5) * 60;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label, tx, rx });
-      this.chartLabels.push(label);
-    }
-  }
-
-  generateWeeklyData(multiplier: { tx: number; rx: number }) {
-    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
-    this.chartData = [];
-    this.chartLabels = [];
-
-    days.forEach((day, index) => {
-      // Weekday lebih tinggi dari weekend
-      let baseValue = 420;
-      if (index >= 5) baseValue = 280; // Sabtu-Minggu lebih rendah
-
-      const variance = (Math.random() - 0.5) * 80;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label: day, tx, rx });
-      this.chartLabels.push(day);
-    });
-  }
-
-  generateMonthlyData(multiplier: { tx: number; rx: number }) {
-    const weeks = ['Minggu 1', 'Minggu 2', 'Minggu 3', 'Minggu 4', 'Minggu 5'];
-    this.chartData = [];
-    this.chartLabels = [];
-
-    weeks.forEach((week, index) => {
-      const baseValue = 400 + index * 10;
-      const variance = (Math.random() - 0.5) * 70;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label: week, tx, rx });
-      this.chartLabels.push(week);
-    });
-  }
-
-  generateYearlyData(multiplier: { tx: number; rx: number }) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    this.chartData = [];
-    this.chartLabels = [];
-
-    const currentMonth = 8; // September (index 8)
-
-    months.forEach((month, index) => {
-      // Jangan tampilkan data masa depan
-      if (index > currentMonth) {
-        return;
-      }
-
-      // Pola tahunan: naik pertengahan tahun
-      const baseValue = 380 + Math.sin((index / 12) * Math.PI * 2) * 60;
-      const variance = (Math.random() - 0.5) * 50;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label: month, tx, rx });
-      this.chartLabels.push(month);
-    });
-  }
-
-  generateCustomRangeData(multiplier: { tx: number; rx: number }) {
-    if (!this.startDate || !this.endDate) return;
-
-    this.chartData = [];
-    this.chartLabels = [];
-
-    const start = new Date(this.startDate);
-    const end = new Date(this.endDate);
-    const daysDiff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-
-    // Tentukan granularity berdasarkan rentang
-    if (daysDiff === 1) {
-      // 1 hari = per jam
-      this.generateHourlyData(multiplier);
-    } else if (daysDiff <= 14) {
-      // 2-14 hari = per hari
-      this.generateDailyDataForRange(start, end, multiplier);
-    } else if (daysDiff <= 60) {
-      // 15-60 hari = per minggu
-      this.generateWeeklyDataForRange(start, end, multiplier);
-    } else {
-      // > 60 hari = per bulan
-      this.generateMonthlyDataForRange(start, end, multiplier);
-    }
-  }
-
-  generateDailyDataForRange(start: Date, end: Date, multiplier: { tx: number; rx: number }) {
-    const current = new Date(start);
-    const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
-
-    while (current <= end) {
-      const dayOfWeek = current.getDay();
-      const label = `${current.getDate()}/${current.getMonth() + 1}`;
-
-      // Weekday lebih tinggi dari weekend
-      let baseValue = 420;
-      if (dayOfWeek === 0 || dayOfWeek === 6) baseValue = 280;
-
-      const variance = (Math.random() - 0.5) * 80;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label, tx, rx });
-      this.chartLabels.push(label);
-
-      current.setDate(current.getDate() + 1);
-    }
-  }
-
-  generateWeeklyDataForRange(start: Date, end: Date, multiplier: { tx: number; rx: number }) {
-    const current = new Date(start);
-    let weekNum = 1;
-
-    while (current <= end) {
-      const weekEnd = new Date(current);
-      weekEnd.setDate(current.getDate() + 6);
-
-      const label = `Mg ${weekNum}`;
-      const baseValue = 400 + (weekNum % 4) * 10;
-      const variance = (Math.random() - 0.5) * 70;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label, tx, rx });
-      this.chartLabels.push(label);
-
-      current.setDate(current.getDate() + 7);
-      weekNum++;
-    }
-  }
-
-  generateMonthlyDataForRange(start: Date, end: Date, multiplier: { tx: number; rx: number }) {
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const current = new Date(start.getFullYear(), start.getMonth(), 1);
-    const endMonth = new Date(end.getFullYear(), end.getMonth(), 1);
-
-    while (current <= endMonth) {
-      const label = monthNames[current.getMonth()];
-      const baseValue = 380 + Math.sin((current.getMonth() / 12) * Math.PI * 2) * 60;
-      const variance = (Math.random() - 0.5) * 50;
-      const tx = Math.round((baseValue + variance) * multiplier.tx);
-      const rx = Math.round((baseValue + variance) * multiplier.rx);
-
-      this.chartData.push({ label, tx, rx });
-      this.chartLabels.push(label);
-
-      current.setMonth(current.getMonth() + 1);
-    }
-  }
 
   calculateStatistics() {
     if (this.chartData.length === 0) return;
 
-    const txValues = this.chartData.map(d => d.tx);
-    const rxValues = this.chartData.map(d => d.rx);
+    // Filter out 0 values so they don't skew the average/current if data is sparse
+    const nonZeroTx = this.chartData.map(d => d.tx).filter(v => v > 0);
+    const nonZeroRx = this.chartData.map(d => d.rx).filter(v => v > 0);
 
-    // Current = nilai terakhir
-    this.txCurrent = txValues[txValues.length - 1];
-    this.rxCurrent = rxValues[rxValues.length - 1];
+    // Current: jika ada live router connected gunakan live value, jika tidak gunakan nilai chart point terakhir yg ada data
+    if (this.isLiveRouterConnected && this.selectedSite === 'Gizi') { // Asumsi Gizi yg live
+      this.txCurrent = Number(this.liveTxMbps.toFixed(2));
+      this.rxCurrent = Number(this.liveRxMbps.toFixed(2));
+    } else {
+      this.txCurrent = nonZeroTx.length > 0 ? Number(nonZeroTx[nonZeroTx.length - 1].toFixed(2)) : 0;
+      this.rxCurrent = nonZeroRx.length > 0 ? Number(nonZeroRx[nonZeroRx.length - 1].toFixed(2)) : 0;
+    }
 
     // Average
-    this.txAverage = Math.round(txValues.reduce((a, b) => a + b, 0) / txValues.length);
-    this.rxAverage = Math.round(rxValues.reduce((a, b) => a + b, 0) / rxValues.length);
+    const txLen = nonZeroTx.length || 1;
+    const rxLen = nonZeroRx.length || 1;
+    this.txAverage = Number((nonZeroTx.reduce((a, b) => a + b, 0) / txLen).toFixed(2));
+    this.rxAverage = Number((nonZeroRx.reduce((a, b) => a + b, 0) / rxLen).toFixed(2));
 
     // Maximum
-    this.txMaximum = Math.max(...txValues);
-    this.rxMaximum = Math.max(...rxValues);
+    this.txMaximum = nonZeroTx.length > 0 ? Number(Math.max(...nonZeroTx).toFixed(2)) : 0;
+    this.rxMaximum = nonZeroRx.length > 0 ? Number(Math.max(...nonZeroRx).toFixed(2)) : 0;
   }
 
-  generateUptimeData() {
-    const uptimeConfigs: { [key: string]: { [key: string]: { uptime: number; downtime: string; lastDown: string; lastRecover: string } } } = {
-      'Direktorat': {
-        'harian': { uptime: 100, downtime: '0s', lastDown: '—', lastRecover: '—' },
-        'mingguan': { uptime: 99.8, downtime: '2m 15s', lastDown: '2026-09-08 03:15', lastRecover: '2026-09-08 03:17' },
-        'bulanan': { uptime: 99.5, downtime: '3h 35m', lastDown: '2026-08-28 14:20', lastRecover: '2026-08-28 17:55' },
-        'tahunan': { uptime: 99.2, downtime: '2d 18h', lastDown: '2026-07-14 09:30', lastRecover: '2026-07-17 03:15' },
-        'custom': { uptime: 99.6, downtime: '1h 45m', lastDown: '2026-09-05 11:15', lastRecover: '2026-09-05 13:00' }
-      },
-      'Gigi': {
-        'harian': { uptime: 95.8, downtime: '1h 0m', lastDown: '2026-09-09 02:15', lastRecover: '2026-09-09 03:15' },
-        'mingguan': { uptime: 97.2, downtime: '4h 42m', lastDown: '2026-09-07 09:30', lastRecover: '2026-09-07 14:12' },
-        'bulanan': { uptime: 96.5, downtime: '1d 1h', lastDown: '2026-08-20 11:15', lastRecover: '2026-08-21 12:20' },
-        'tahunan': { uptime: 95.8, downtime: '15d 6h', lastDown: '2026-06-10 08:00', lastRecover: '2026-06-25 14:15' },
-        'custom': { uptime: 96.8, downtime: '12h 30m', lastDown: '2026-09-07 09:30', lastRecover: '2026-09-07 22:00' }
-      },
-      'Keperawatan': {
-        'harian': { uptime: 100, downtime: '0s', lastDown: '—', lastRecover: '—' },
-        'mingguan': { uptime: 99.5, downtime: '8m 45s', lastDown: '2026-09-06 14:20', lastRecover: '2026-09-06 14:29' },
-        'bulanan': { uptime: 98.9, downtime: '7h 52m', lastDown: '2026-08-15 10:05', lastRecover: '2026-08-15 17:57' },
-        'tahunan': { uptime: 98.5, downtime: '5d 10h', lastDown: '2026-05-22 16:30', lastRecover: '2026-05-28 02:45' },
-        'custom': { uptime: 99.2, downtime: '2h 15m', lastDown: '2026-09-06 14:20', lastRecover: '2026-09-06 16:35' }
-      },
-      'Gizi': {
-        'harian': { uptime: 100, downtime: '0s', lastDown: '—', lastRecover: '—' },
-        'mingguan': { uptime: 100, downtime: '0s', lastDown: '—', lastRecover: '—' },
-        'bulanan': { uptime: 99.9, downtime: '45s', lastDown: '2026-08-05 03:22', lastRecover: '2026-08-05 03:23' },
-        'tahunan': { uptime: 99.7, downtime: '1d 3h', lastDown: '2026-04-18 07:10', lastRecover: '2026-04-19 10:25' },
-        'custom': { uptime: 100, downtime: '0s', lastDown: '—', lastRecover: '—' }
-      },
-      'Kebidanan': {
-        'harian': { uptime: 100, downtime: '0s', lastDown: '—', lastRecover: '—' },
-        'mingguan': { uptime: 98.1, downtime: '3h 11m', lastDown: '2026-09-05 11:15', lastRecover: '2026-09-05 14:26' },
-        'bulanan': { uptime: 97.8, downtime: '15h 48m', lastDown: '2026-08-22 08:30', lastRecover: '2026-08-23 00:18' },
-        'tahunan': { uptime: 97.2, downtime: '10d 5h', lastDown: '2026-03-15 13:45', lastRecover: '2026-03-25 18:50' },
-        'custom': { uptime: 98.5, downtime: '5h 20m', lastDown: '2026-09-05 11:15', lastRecover: '2026-09-05 16:35' }
+  async generateUptimeData() {
+    const now = new Date();
+    let periodMs = 24 * 60 * 60 * 1000; // default: harian (1 hari)
+
+    switch (this.selectedPeriod) {
+      case 'harian':
+        periodMs = 24 * 60 * 60 * 1000;
+        break;
+      case 'mingguan':
+        periodMs = 7 * 24 * 60 * 60 * 1000;
+        break;
+      case 'bulanan':
+        periodMs = 30 * 24 * 60 * 60 * 1000;
+        break;
+      case 'tahunan':
+        periodMs = 365 * 24 * 60 * 60 * 1000;
+        break;
+      case 'custom':
+        if (this.startDate && this.endDate) {
+          const s = new Date(this.startDate);
+          const e = new Date(this.endDate);
+          periodMs = e.getTime() - s.getTime() || 24 * 60 * 60 * 1000;
+        }
+        break;
+    }
+
+    // Fetch downtime events dari backend untuk semua site
+    const results: UptimeData[] = [];
+
+    for (const site of this.sites) {
+      let downtimeTotal = 0;
+      let lastDown = '—';
+      let lastRecover = '—';
+
+      try {
+        const res = await fetch(`http://localhost:3000/api/router/downtime-events?site=${encodeURIComponent(site)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const events: any[] = data.events || [];
+
+          // Filter events within the selected period
+          const periodStart = new Date(now.getTime() - periodMs);
+          const relevantEvents = events.filter((e: any) => {
+            const eventTime = new Date(e.start);
+            return eventTime >= periodStart;
+          });
+
+          // Calculate total downtime in seconds
+          for (const ev of relevantEvents) {
+            if (ev.end) {
+              const startTime = new Date(ev.start).getTime();
+              const endTime = new Date(ev.end).getTime();
+              downtimeTotal += (endTime - startTime) / 1000;
+            }
+          }
+
+          // Get last down and recover times
+          if (relevantEvents.length > 0) {
+            const latest = relevantEvents[0]; // events are sorted newest first
+            lastDown = latest.start ? new Date(latest.start).toLocaleString('sv-SE').replace('T', ' ').substring(0, 16) : '—';
+            lastRecover = latest.end ? new Date(latest.end).toLocaleString('sv-SE').replace('T', ' ').substring(0, 16) : '—';
+          }
+        }
+      } catch (e) {
+        // If fetch fails, show 100% uptime (no data)
       }
-    };
 
-    this.uptimeData = this.sites.map(site => {
-      const config = uptimeConfigs[site][this.selectedPeriod];
-      const color = config.uptime >= 99 ? '#5B7A52' : config.uptime >= 97 ? '#D9A441' : '#C4442E';
+      const totalPeriodSeconds = periodMs / 1000;
+      const uptimePct = totalPeriodSeconds > 0
+        ? Math.max(0, Math.min(100, parseFloat((((totalPeriodSeconds - downtimeTotal) / totalPeriodSeconds) * 100).toFixed(1))))
+        : 100;
 
-      return {
+      const color = uptimePct >= 99 ? '#5B7A52' : uptimePct >= 97 ? '#D9A441' : '#C4442E';
+
+      // Format downtime duration
+      let downtimeStr = '0s';
+      if (downtimeTotal > 0) {
+        const d = Math.floor(downtimeTotal / 86400);
+        const h = Math.floor((downtimeTotal % 86400) / 3600);
+        const m = Math.floor((downtimeTotal % 3600) / 60);
+        const s = Math.floor(downtimeTotal % 60);
+        const parts: string[] = [];
+        if (d > 0) parts.push(`${d}d`);
+        if (h > 0) parts.push(`${h}h`);
+        if (m > 0) parts.push(`${m}m`);
+        if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+        downtimeStr = parts.join(' ');
+      }
+
+      results.push({
         site,
-        uptimePct: config.uptime,
+        uptimePct,
         color,
-        downtimeTotal: config.downtime,
-        lastDown: config.lastDown,
-        lastRecover: config.lastRecover
-      };
-    });
+        downtimeTotal: downtimeStr,
+        lastDown,
+        lastRecover
+      });
+    }
+
+    this.uptimeData = results;
   }
 
-  generateAllDowntimeEvents() {
-    this.allDowntimeEvents = [
-      // Direktorat
-      { site: 'Direktorat', start: '2026-09-08 03:15:12', duration: '2m 15s', color: '#5B7A52', end: '2026-09-08 03:17:27', reported: false, timestamp: new Date('2026-09-08T03:15:12') },
-      { site: 'Direktorat', start: '2026-08-28 14:20:30', duration: '3h 35m', color: '#D9A441', end: '2026-08-28 17:55:18', reported: true, timestamp: new Date('2026-08-28T14:20:30') },
-      { site: 'Direktorat', start: '2026-07-14 09:30:45', duration: '2d 18h', color: '#C4442E', end: '2026-07-17 03:15:22', reported: true, timestamp: new Date('2026-07-14T09:30:45') },
 
-      // Gigi
-      { site: 'Gigi', start: '2026-09-09 02:15:08', duration: '1h 0m', color: '#D9A441', end: '2026-09-09 03:15:08', reported: true, timestamp: new Date('2026-09-09T02:15:08') },
-      { site: 'Gigi', start: '2026-09-07 09:30:15', duration: '4h 42m', color: '#C4442E', end: '2026-09-07 14:12:08', reported: true, timestamp: new Date('2026-09-07T09:30:15') },
-      { site: 'Gigi', start: '2026-08-20 11:15:42', duration: '1d 1h', color: '#C4442E', end: '2026-08-21 12:20:18', reported: true, timestamp: new Date('2026-08-20T11:15:42') },
-      { site: 'Gigi', start: '2026-06-10 08:00:00', duration: '15d 6h', color: '#C4442E', end: '2026-06-25 14:15:30', reported: true, timestamp: new Date('2026-06-10T08:00:00') },
-
-      // Keperawatan
-      { site: 'Keperawatan', start: '2026-09-06 14:20:30', duration: '8m 45s', color: '#5B7A52', end: '2026-09-06 14:29:15', reported: false, timestamp: new Date('2026-09-06T14:20:30') },
-      { site: 'Keperawatan', start: '2026-08-15 10:05:20', duration: '7h 52m', color: '#D9A441', end: '2026-08-15 17:57:45', reported: true, timestamp: new Date('2026-08-15T10:05:20') },
-      { site: 'Keperawatan', start: '2026-05-22 16:30:12', duration: '5d 10h', color: '#C4442E', end: '2026-05-28 02:45:08', reported: true, timestamp: new Date('2026-05-22T16:30:12') },
-
-      // Gizi
-      { site: 'Gizi', start: '2026-08-05 03:22:15', duration: '45s', color: '#5B7A52', end: '2026-08-05 03:23:00', reported: false, timestamp: new Date('2026-08-05T03:22:15') },
-      { site: 'Gizi', start: '2026-04-18 07:10:30', duration: '1d 3h', color: '#D9A441', end: '2026-04-19 10:25:18', reported: true, timestamp: new Date('2026-04-18T07:10:30') },
-
-      // Kebidanan
-      { site: 'Kebidanan', start: '2026-09-05 11:15:42', duration: '3h 11m', color: '#D9A441', end: '2026-09-05 14:26:58', reported: true, timestamp: new Date('2026-09-05T11:15:42') },
-      { site: 'Kebidanan', start: '2026-08-22 08:30:10', duration: '15h 48m', color: '#C4442E', end: '2026-08-23 00:18:45', reported: true, timestamp: new Date('2026-08-22T08:30:10') },
-      { site: 'Kebidanan', start: '2026-03-15 13:45:20', duration: '10d 5h', color: '#C4442E', end: '2026-03-25 18:50:30', reported: true, timestamp: new Date('2026-03-15T13:45:20') }
-    ];
-  }
 
   filterDowntimeLog() {
-    const now = new Date('2026-09-09T07:23:18');
+    const now = new Date();
     let startDate: Date;
     let endDate: Date = now;
 
@@ -592,7 +570,7 @@ export class LaporanTrafikComponent implements OnInit {
     const maxValue = Math.max(
       Math.max(...this.chartData.map(d => d.tx)),
       Math.max(...this.chartData.map(d => d.rx)),
-      500
+      300
     );
 
     const points = this.chartData.length;

@@ -9,6 +9,7 @@ export const routes: Routes = [
   { path: 'monitoring', loadComponent: () => import('./pages/monitoring/monitoring.component').then(m => m.MonitoringComponent) },
   { path: 'laporan-trafik', loadComponent: () => import('./pages/laporan-trafik/laporan-trafik.component').then(m => m.LaporanTrafikComponent) },
   { path: 'laporan', loadComponent: () => import('./pages/laporan/laporan.component').then(m => m.LaporanComponent) },
+  { path: 'project-site', loadComponent: () => import('./pages/project-site/project-site.component').then(m => m.ProjectSiteComponent) },
   // Halaman Pengguna hanya untuk role EOS
   { path: 'pengguna', loadComponent: () => import('./pages/pengguna/pengguna.component').then(m => m.PenggunaComponent) }
 ];
