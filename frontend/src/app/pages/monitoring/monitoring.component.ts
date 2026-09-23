@@ -1,7 +1,7 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 import { ProjectService } from '../../services/project.service';
@@ -36,14 +36,14 @@ export interface TrafficBar {
 @Component({
   selector: 'app-monitoring',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent, SiteDropdownComponent],
+  imports: [CommonModule, FormsModule, RouterModule, SidebarComponent, SiteDropdownComponent],
   templateUrl: './monitoring.component.html',
   styleUrls: ['./monitoring.component.css']
 })
 export class MonitoringComponent implements OnInit, OnDestroy {
-  sites: string[] = ['Direktorat', 'Gigi', 'Keperawatan', 'Gizi', 'Kebidanan'];
-  selectedSite = 'Direktorat';
-  selectedSiteLabel = 'Direktorat';
+  sites: string[] = [];
+  selectedSite = '';
+  selectedSiteLabel = '';
   searchText = '';
   statusFilter = ''; // 'down' or empty
   showAddModal = false;
@@ -129,30 +129,32 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    this.projectService.siteTree$.subscribe(tree => {
-      if (tree && tree.length > 0) {
-        this.sites = tree.flatMap(p => p.children ? p.children.map(s => s.siteValue!) : []);
+    // Daftar site mengikuti data project (dinamis, bukan hardcoded)
+    this.projectService.sites$.subscribe(sites => {
+      this.sites = sites || [];
+      if (this.sites.length === 0) return;
+
+      const requested = this.selectedSite || this.route.snapshot.queryParams['site'];
+      const next = requested && this.sites.includes(requested) ? requested : this.sites[0];
+      if (next !== this.selectedSite) {
+        this.selectedSiteLabel = next;
+        this.selectSite(next);
       }
     });
 
-    // Ambil semua device
-    this.initDevices();
     this.route.queryParams.subscribe(params => {
-      if (params['site'] && this.sites.includes(params['site'])) {
-        this.selectedSite = params['site'];
+      if (params['site'] && this.sites.includes(params['site']) && params['site'] !== this.selectedSite) {
+        this.selectedSiteLabel = params['site'];
+        this.selectSite(params['site']);
       }
       if (params['status']) {
         this.statusFilter = params['status'].toLowerCase();
       }
-      this.fetchRouterTraffic();
     });
-
-    // Inisialisasi perangkat dari backend (Database / Persistent Storage)
-    this.initDevices();
 
     // Mulai polling data traffic router setiap 2 detik
     this.trafficTimer = setInterval(() => {
-      this.fetchRouterTraffic();
+      if (this.selectedSite) this.fetchRouterTraffic();
     }, 2000);
 
     // Auto-refresh status perangkat setiap 30 detik
@@ -180,7 +182,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   async initDevices() {
     try {
       const site = encodeURIComponent(this.selectedSite);
-      const res = await fetch(`http://localhost:3000/api/devices/status?site=${site}`);
+      const res = await fetch(`/api/devices/status?site=${site}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.devices) {
@@ -191,7 +193,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       }
     } catch (e) { /* fallback below */ }
     try {
-      const fallback = await fetch('http://localhost:3000/api/devices');
+      const fallback = await fetch('/api/devices');
       if (fallback.ok) {
         const data = await fallback.json();
         if (data && data.devices) this.devices = data.devices;
@@ -212,7 +214,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     if (this.devices.length === 0) return;
     try {
       const site = encodeURIComponent(this.selectedSite);
-      const res = await fetch(`http://localhost:3000/api/devices/status?site=${site}`);
+      const res = await fetch(`/api/devices/status?site=${site}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data && data.devices) {
@@ -231,7 +233,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   fetchRouterTraffic() {
-    fetch(`http://localhost:3000/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+    fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
       .then(res => res.json())
       .then(data => {
         // Hanya proses traffic jika site memang terkonfigurasi pada backend
@@ -524,7 +526,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const dev = this.rebootTargetDevice;
 
     // Panggil Backend Reboot API (Mendukung SSH & HTTP Web API TP-Link)
-    fetch('http://localhost:3000/api/device/reboot', {
+    fetch('/api/device/reboot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -565,7 +567,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
           this.rebootPollTimer = setInterval(async () => {
             pollCount++;
             try {
-              const pingRes = await fetch('http://localhost:3000/api/ping-all', {
+              const pingRes = await fetch('/api/ping-all', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ hosts: [dev.ip] })
               });
@@ -636,7 +638,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const devId = this.editingDevice._id || this.editingDevice.id;
 
     try {
-      const res = await fetch(`http://localhost:3000/api/devices/${devId}`, {
+      const res = await fetch(`/api/devices/${devId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(this.editingDevice)
@@ -684,7 +686,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.pingStatus = 'pinging';
     this.pingResultInfo = '';
 
-    fetch('http://localhost:3000/api/ping', {
+    fetch('/api/ping', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ host: this.managementTargetDevice.ip })
@@ -746,7 +748,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
     // Kirim request DELETE ke backend
     try {
-      await fetch(`http://localhost:3000/api/devices/${devIdentifier}`, {
+      await fetch(`/api/devices/${devIdentifier}`, {
         method: 'DELETE'
       });
     } catch (e) {
@@ -834,7 +836,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
     // Kirim request POST ke backend agar tersimpan permanen
     try {
-      const res = await fetch('http://localhost:3000/api/devices', {
+      const res = await fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(deviceToAdd)
@@ -882,7 +884,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   getEmptyDevice() {
     return {
-      siteLocation: this.selectedSite || 'Direktorat',
+      siteLocation: this.selectedSite || '',
       tipePerangkat: 'Access Point',
       nama: '',
       brand: '',

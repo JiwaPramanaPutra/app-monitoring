@@ -42,8 +42,7 @@ const deviceSchema = new mongoose.Schema({
     },
     siteLocation: {
         type: String,
-        required: true,
-        default: 'Direktorat'
+        required: true
     },
     gedung: {
         type: String,

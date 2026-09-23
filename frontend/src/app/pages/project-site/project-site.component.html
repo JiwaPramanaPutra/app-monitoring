@@ -184,11 +184,11 @@
     <form (ngSubmit)="saveProject()">
       <div class="form-group">
         <label>Nama Project / Instansi</label>
-        <input type="text" [(ngModel)]="projectForm.name" name="name" required placeholder="misal: Universitas Udayana">
+        <input type="text" [(ngModel)]="projectForm.name" name="name" required placeholder="misal: Kantor Pusat">
       </div>
       <div class="form-group">
         <label>Kode Singkat (opsional)</label>
-        <input type="text" [(ngModel)]="projectForm.code" name="code" placeholder="misal: UNUD">
+        <input type="text" [(ngModel)]="projectForm.code" name="code" placeholder="misal: KP">
       </div>
       <div class="form-actions">
         <button type="button" class="btn" style="background:transparent;color:var(--ink);border:1px solid var(--border);" (click)="showProjectModal = false">Batal</button>
@@ -210,7 +210,7 @@
     <form (ngSubmit)="saveSite()">
       <div class="form-group">
         <label>Nama Site / Cabang</label>
-        <input type="text" [(ngModel)]="siteForm.name" name="siteName" required placeholder="misal: Unud Denpasar">
+        <input type="text" [(ngModel)]="siteForm.name" name="siteName" required placeholder="misal: Kantor Pusat">
       </div>
 
       <div style="margin-top:18px;margin-bottom:12px;font-size:12px;font-weight:600;color:var(--muted);border-bottom:0.5px solid var(--border);padding-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
@@ -223,7 +223,7 @@
       <div class="form-row">
         <div class="form-group">
           <label>Host / IP</label>
-          <input type="text" [(ngModel)]="siteForm.routerConfig.host" name="host" placeholder="misal: 223.27.147.18">
+          <input type="text" [(ngModel)]="siteForm.routerConfig.host" name="host" placeholder="misal: 192.0.2.1">
         </div>
         <div class="form-group">
           <label>API Port</label>

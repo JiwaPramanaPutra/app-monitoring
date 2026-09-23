@@ -13,7 +13,7 @@ async function runTest() {
             type: 'Jaringan',
             masalah: 'Test masalah',
             tindakan: 'Test tindakan',
-            site: 'Gizi',
+            site: 'Site Alpha',
             technician: 'Test User',
             priority: 'Normal'
         })

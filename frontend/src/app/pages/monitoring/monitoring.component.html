@@ -8,9 +8,7 @@
       <div>
         <h2 style="font-size:16px;">Monitoring Jaringan</h2>
         <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">
-          {{ selectedSite }} · 1 router · {{ filteredDevices.length }} perangkat
-          <span style="margin:0 6px;color:var(--border);">|</span>
-          <span style="color:var(--ink);">Poltekkes Kemenkes Semarang</span>
+          {{ selectedSite }} · {{ filteredDevices.length }} perangkat
         </div>
       </div>
 
@@ -30,6 +28,12 @@
           Tambah Perangkat
         </button>
       </div>
+    </div>
+
+    <!-- Empty state: belum ada site -->
+    <div *ngIf="sites.length === 0"
+      style="padding:12px 16px;margin-bottom:12px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;font-size:12px;color:#92400E;">
+      Belum ada site. <a routerLink="/project-site" style="color:#92400E;font-weight:600;text-decoration:underline;">Buat project &amp; site pertama</a> untuk mulai memantau perangkat.
     </div>
 
     <!-- Active Filter Banner (e.g. from Dashboard click "Perangkat Down") -->
@@ -485,7 +489,7 @@
         <div style="display:flex;gap:8px;">
           <div style="flex:1;">
             <label style="display:block;font-size:11px;font-weight:500;color:var(--muted);margin-bottom:4px;">Username (SSH/Web)</label>
-            <input type="text" [(ngModel)]="rebootUsername" placeholder="noccni / admin"
+            <input type="text" [(ngModel)]="rebootUsername" placeholder="admin"
               style="width:100%;box-sizing:border-box;padding:7px 9px;font-size:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--ink);" />
           </div>
           <div style="flex:1;">
@@ -495,7 +499,7 @@
           </div>
         </div>
         <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">
-          *Biarkan kosong untuk menggunakan akun default sistem (<code>noccni</code>).
+          *Biarkan kosong untuk menggunakan akun default sistem.
         </div>
       </div>
       <div
@@ -572,7 +576,7 @@
       <div class="form-row">
         <div class="form-group">
           <label>Serial Number (SN)</label>
-          <input type="text" [(ngModel)]="editingDevice.serialNumber" name="serialNumber" placeholder="misal: RG-SW-DIR-004">
+          <input type="text" [(ngModel)]="editingDevice.serialNumber" name="serialNumber" placeholder="misal: SW-Lt2-Dist">
         </div>
         <div class="form-group">
           <label>MAC Address</label>
@@ -606,7 +610,7 @@
         </div>
         <div class="form-group">
           <label>External Device ID</label>
-          <input type="text" [(ngModel)]="editingDevice.externalDeviceId" name="externalDeviceId" placeholder="rj-dir-sw-004">
+          <input type="text" [(ngModel)]="editingDevice.externalDeviceId" name="externalDeviceId" placeholder="sw-lt2-dist-01">
         </div>
       </div>
 
@@ -620,7 +624,7 @@
       <div class="form-row form-row-3">
         <div class="form-group">
           <label>Gedung</label>
-          <input type="text" [(ngModel)]="editingDevice.gedung" name="gedung" placeholder="misal: Gedung TLM">
+          <input type="text" [(ngModel)]="editingDevice.gedung" name="gedung" placeholder="misal: Gedung A">
         </div>
         <div class="form-group">
           <label>Lantai</label>
@@ -846,7 +850,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>Serial Number (SN)</label>
-        <input type="text" [(ngModel)]="newDevice.serialNumber" placeholder="misal: RG-AP-DIR-009">
+        <input type="text" [(ngModel)]="newDevice.serialNumber" placeholder="misal: AP-Lab-Lt2">
       </div>
       <div class="form-group">
         <label>MAC Address</label>
@@ -894,7 +898,7 @@
     <div class="form-row form-row-3">
       <div class="form-group">
         <label>Gedung</label>
-        <input type="text" [(ngModel)]="newDevice.gedung" placeholder="misal: Gedung TLM">
+        <input type="text" [(ngModel)]="newDevice.gedung" placeholder="misal: Gedung A">
       </div>
       <div class="form-group">
         <label>Lantai</label>

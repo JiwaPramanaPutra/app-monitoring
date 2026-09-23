@@ -44,3 +44,6 @@ backend/data/
 
 # Local editor/agent settings
 settings.local.json
+
+# Dokumen internal (tidak untuk repo publik)
+NEXUS_PRD.md

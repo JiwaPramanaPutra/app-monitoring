@@ -8,7 +8,6 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const ping = require('ping');
-const { Client: SSHClient } = require('ssh2');
 const { RouterOSAPI } = require('node-routeros');
 const storage = require('./storage');
 const Device = require('./models/Device');
@@ -32,48 +31,33 @@ if (MONGO_URI && !MONGO_URI.includes('YOUR_PASSWORD_HERE')) {
 app.use(cors());
 app.use(express.json());
 
-storage.seedLocalProjects();
+// Konfigurasi router default dari environment (opsional).
+// Dipakai hanya sebagai fallback untuk request tanpa site ber-routerConfig.
+// Tidak ada nilai default hardcoded: tanpa env lengkap, router dianggap belum dikonfigurasi.
+function getEnvRouterConfig() {
+    const host = process.env.MIKROTIK_HOST;
+    const user = process.env.MIKROTIK_USER;
+    const password = process.env.MIKROTIK_PASSWORD;
+    if (!host || !user || !password) return null;
 
-// Konfigurasi Router MikroTik Fisik Riil
-const MIKROTIK_CONFIG = {
-    host: process.env.MIKROTIK_HOST || '223.27.147.18',
-    port: parseInt(process.env.MIKROTIK_PORT || '8728', 10),
-    user: process.env.MIKROTIK_USER || 'jiwa-monitoring',
-    password: process.env.MIKROTIK_PASSWORD || 'Denpasar2026',
-    interface: process.env.MIKROTIK_INTERFACE || 'ether5',
-    timeout: 3
-};
-
-// Mapping site ke konfigurasi router MikroTik masing-masing
-// Router RB450Gx4 di site Gizi: WAN = ether5 (WAN CNI)
-// Untuk site lain, tambahkan router credentials masing-masing saat tersedia
-const SITE_ROUTER_MAP = {
-    'Gizi': {
-        host: '223.27.147.18',
-        port: 8729,
-        displayPort: 8298,      // Port WinBox / Akses publik pengguna
-        user: process.env.MIKROTIK_USER,
-        password: process.env.MIKROTIK_PASSWORD,
-        interface: 'ether5',    // WAN CNI - bandwidth total site Gizi
-        timeout: 5,
-        routerModel: 'RB450Gx4 (RO.POLTEKKES GIZI)'
-    }
-    // Tambahkan site lain di sini ketika router mereka dikonfigurasi:
-    // 'Direktorat': { host: 'x.x.x.x', port: 8728, displayPort: 8291, user: '...', password: '...', interface: 'etherX' },
-    // 'Gigi': { ... },
-    // 'Keperawatan': { ... },
-    // 'Kebidanan': { ... },
-};
-
-// Backward compat: simple site-to-interface map (untuk endpoint site-mapping)
-const SITE_INTERFACE_MAP = {};
-for (const [site, cfg] of Object.entries(SITE_ROUTER_MAP)) {
-    SITE_INTERFACE_MAP[site] = cfg.interface;
+    return {
+        host,
+        port: parseInt(process.env.MIKROTIK_PORT || '8728', 10),
+        displayPort: parseInt(process.env.MIKROTIK_DISPLAY_PORT || '0', 10) || null,
+        user,
+        password,
+        interface: process.env.MIKROTIK_INTERFACE || 'ether1',
+        timeout: parseInt(process.env.MIKROTIK_TIMEOUT || '3', 10),
+        routerModel: 'Environment default'
+    };
 }
 
 // Resolve konfigurasi router berdasarkan site
 async function resolveRouterConfig(site, ifaceOverride) {
-    if (!site) return MIKROTIK_CONFIG;
+    if (!site) {
+        const envCfg = getEnvRouterConfig();
+        return envCfg ? { ...envCfg, interface: ifaceOverride || envCfg.interface } : null;
+    }
 
     let projectSite = null;
     if (mongoose.connection.readyState === 1) {
@@ -84,7 +68,7 @@ async function resolveRouterConfig(site, ifaceOverride) {
     } else {
         const projects = storage.getLocalProjects();
         for (const p of projects) {
-            const s = p.sites.find(s => s.name === site);
+            const s = (p.sites || []).find(s => s.name === site);
             if (s) { projectSite = s; break; }
         }
     }
@@ -103,29 +87,12 @@ async function resolveRouterConfig(site, ifaceOverride) {
         };
     }
 
-    if (site && SITE_ROUTER_MAP[site]) {
-        const cfg = SITE_ROUTER_MAP[site];
-        return {
-            host: cfg.host,
-            port: cfg.port,
-            displayPort: cfg.displayPort,
-            user: cfg.user,
-            password: cfg.password,
-            interface: ifaceOverride || cfg.interface,
-            timeout: cfg.timeout || 3,
-            routerModel: cfg.routerModel || 'Unknown'
-        };
+    const envCfg = getEnvRouterConfig();
+    if (envCfg) {
+        return { ...envCfg, interface: ifaceOverride || envCfg.interface };
     }
-    
-    return {
-        host: MIKROTIK_CONFIG.host,
-        port: MIKROTIK_CONFIG.port,
-        user: MIKROTIK_CONFIG.user,
-        password: MIKROTIK_CONFIG.password,
-        interface: ifaceOverride || MIKROTIK_CONFIG.interface,
-        timeout: MIKROTIK_CONFIG.timeout,
-        routerModel: 'Default'
-    };
+
+    return null;
 }
 
 // Opsi TLS untuk koneksi RouterOS API (MikroTik pakai ADH cipher yang Node.js v24 matikan secara default)
@@ -138,8 +105,8 @@ const MIKROTIK_TLS_OPTIONS = {
 // Cache koneksi dan state traffic terakhir
 let cachedTraffic = {
     source: 'initial',
-    ip: MIKROTIK_CONFIG.host,
-    interface: MIKROTIK_CONFIG.interface,
+    ip: '',
+    interface: '',
     txMbps: 0,
     rxMbps: 0,
     txBps: 0,
@@ -217,11 +184,19 @@ app.get('/api/health', (req, res) => {
  * Info Resource MikroTik (Model, Uptime, CPU Load, Versi)
  */
 app.get('/api/router/info', async (req, res) => {
+    const routerConfig = getEnvRouterConfig();
+    if (!routerConfig) {
+        return res.status(503).json({
+            success: false,
+            error: 'Router default belum dikonfigurasi. Atur MIKROTIK_HOST, MIKROTIK_USER, dan MIKROTIK_PASSWORD, atau konfigurasi router per site.'
+        });
+    }
+
     const api = new RouterOSAPI({
-        host: MIKROTIK_CONFIG.host,
-        port: MIKROTIK_CONFIG.port,
-        user: MIKROTIK_CONFIG.user,
-        password: MIKROTIK_CONFIG.password,
+        host: routerConfig.host,
+        port: routerConfig.port,
+        user: routerConfig.user,
+        password: routerConfig.password,
         timeout: 4,
         tls: MIKROTIK_TLS_OPTIONS
     });
@@ -240,7 +215,7 @@ app.get('/api/router/info', async (req, res) => {
 
 /**
  * Endpoint Monitoring Traffic Router MikroTik Real-time
- * Menerima query param: ?site=Gizi atau ?interface=ether5
+ * Menerima query param: ?site=<nama-site> atau ?interface=<nama-interface>
  * Prioritas: interface (override manual) > site (mapping otomatis) > default
  */
 app.get('/api/router/traffic', async (req, res) => {
@@ -248,18 +223,36 @@ app.get('/api/router/traffic', async (req, res) => {
     const ifaceOverride = req.query.interface;
     const routerConfig = await resolveRouterConfig(site, ifaceOverride);
 
-    // Cek apakah site ini sudah dikonfigurasi
-    const siteConfigured = !!(site && SITE_ROUTER_MAP[site]);
+    // Site dianggap terkonfigurasi hanya jika ada routerConfig yang bisa dipakai
+    if (!routerConfig) {
+        return res.json({
+            connected: false,
+            siteConfigured: false,
+            site: site || 'Unknown',
+            ip: '',
+            interface: '',
+            routerModel: '',
+            txMbps: 0,
+            rxMbps: 0,
+            txBps: 0,
+            rxBps: 0,
+            source: 'not-configured',
+            error: site
+                ? `Site "${site}" belum memiliki konfigurasi router.`
+                : 'Belum ada konfigurasi router default.',
+            timestamp: new Date()
+        });
+    }
 
     try {
         const liveData = await fetchMikrotikTraffic(routerConfig);
         liveData.site = site || 'Unknown';
-        liveData.siteConfigured = siteConfigured;
+        liveData.siteConfigured = true;
         liveData.routerModel = routerConfig.routerModel;
         cachedTraffic = liveData;
 
         // Record sample in storage if site is configured
-        if (siteConfigured) {
+        if (site) {
             siteFailureCounts[site] = 0;
             storage.recordTrafficSample({
                 site,
@@ -273,7 +266,7 @@ app.get('/api/router/traffic', async (req, res) => {
 
         return res.json(liveData);
     } catch (err) {
-        if (siteConfigured) {
+        if (site) {
             siteFailureCounts[site] = (siteFailureCounts[site] || 0) + 1;
             if (siteFailureCounts[site] >= FAILURE_THRESHOLD) {
                 storage.recordDowntimeStart(site, err.message);
@@ -284,7 +277,7 @@ app.get('/api/router/traffic', async (req, res) => {
         return res.json({
             ...cachedTraffic,
             site: site || 'Unknown',
-            siteConfigured,
+            siteConfigured: true,
             routerModel: routerConfig.routerModel,
             source: 'cached-fallback',
             error: err.message,
@@ -298,11 +291,19 @@ app.get('/api/router/traffic', async (req, res) => {
  * Berguna untuk mengetahui interface mana saja yang aktif di router
  */
 app.get('/api/router/interfaces', async (req, res) => {
+    const routerConfig = getEnvRouterConfig();
+    if (!routerConfig) {
+        return res.status(503).json({
+            success: false,
+            error: 'Router default belum dikonfigurasi. Atur MIKROTIK_HOST, MIKROTIK_USER, dan MIKROTIK_PASSWORD, atau konfigurasi router per site.'
+        });
+    }
+
     const api = new RouterOSAPI({
-        host: MIKROTIK_CONFIG.host,
-        port: MIKROTIK_CONFIG.port,
-        user: MIKROTIK_CONFIG.user,
-        password: MIKROTIK_CONFIG.password,
+        host: routerConfig.host,
+        port: routerConfig.port,
+        user: routerConfig.user,
+        password: routerConfig.password,
         timeout: 4,
         tls: MIKROTIK_TLS_OPTIONS
     });
@@ -320,84 +321,7 @@ app.get('/api/router/interfaces', async (req, res) => {
             comment: i.comment || '',
             macAddress: i['mac-address'] || ''
         }));
-        res.json({ success: true, data: result, siteMapping: SITE_INTERFACE_MAP });
-    } catch (err) {
-        try { await api.close(); } catch (e) { }
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-/**
- * Endpoint: Menghitung & Mengambil Daftar Klien Aktif dari MikroTik DHCP Leases & ARP Table
- * Mendukung filter ?site=Gizi atau ?subnet=192.168.104
- */
-app.get('/api/router/clients', async (req, res) => {
-    const site = req.query.site || 'Gizi';
-    const subnetFilter = req.query.subnet; // misal '192.168.104'
-    const routerConfig = await resolveRouterConfig(site);
-
-    const api = new RouterOSAPI({
-        host: routerConfig.host,
-        port: routerConfig.port,
-        user: routerConfig.user,
-        password: routerConfig.password,
-        timeout: 4,
-        tls: MIKROTIK_TLS_OPTIONS
-    });
-    api.on('error', () => { });
-
-    try {
-        await api.connect();
-        const [leases, arpList] = await Promise.all([
-            api.write('/ip/dhcp-server/lease/print').catch(() => []),
-            api.write('/ip/arp/print').catch(() => [])
-        ]);
-        await api.close().catch(() => { });
-
-        // Filter AP / Router MACs agar tidak terhitung sebagai client
-        const apMacs = new Set([
-            '20:E1:5D:E3:D5:C0',
-            '20:E1:5D:E3:6F:94',
-            '20:E1:5D:E3:65:58',
-            '20:E1:5D:E3:C9:A0',
-            '20:E1:5D:E3:F0:7C',
-            '20:E1:5D:E3:EF:0C',
-            '20:E1:5D:E3:DF:14',
-            '70:85:C4:F7:24:3E',
-            '50:D4:F7:49:B3:D2',
-            '18:FD:74:3A:73:CE',
-            '18:FD:74:3A:73:CF'
-        ]);
-
-        const activeLeases = (leases || []).filter(l => l.status === 'bound' && !apMacs.has(l['mac-address']));
-        const activeArp = (arpList || []).filter(a => a.complete === 'true' && a.disabled !== 'true' && !apMacs.has(a['mac-address']));
-
-        // Hitung per subnet
-        const subnetCounts = {};
-        for (const a of activeArp) {
-            if (a.address) {
-                const prefix = a.address.split('.').slice(0, 3).join('.');
-                subnetCounts[prefix] = (subnetCounts[prefix] || 0) + 1;
-            }
-        }
-
-        let filteredClients = activeArp;
-        if (subnetFilter) {
-            filteredClients = filteredClients.filter(c => c.address && c.address.startsWith(subnetFilter));
-        }
-
-        res.json({
-            success: true,
-            site,
-            totalClientLeases: activeLeases.length,
-            totalClientArp: activeArp.length,
-            subnetCounts,
-            filteredCount: filteredClients.length,
-            clients: filteredClients.slice(0, 50).map(c => ({
-                ip: c.address,
-                mac: c['mac-address'] || '',
-                interface: c.interface || ''
-            }))
-        });
+        res.json({ success: true, data: result });
     } catch (err) {
         try { await api.close(); } catch (e) { }
         res.status(500).json({ success: false, error: err.message });
@@ -406,12 +330,8 @@ app.get('/api/router/clients', async (req, res) => {
 
 
 
-/**
- * Endpoint: Mapping site-to-interface (untuk frontend)
- */
-app.get('/api/router/site-mapping', (req, res) => {
-    res.json({ success: true, mapping: SITE_INTERFACE_MAP });
-});
+
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: Aggregasi samples ke format laporan per-periode (WIB = UTC+7)
@@ -566,16 +486,20 @@ async function getRawSamples(site, startDate, endDate) {
 /**
  * Endpoint: Riwayat & Agregasi traffic router per-site
  * Query params:
- *   ?site=Gizi
+ *   ?site=<nama-site> (wajib)
  *   ?period=harian|mingguan|bulanan|tahunan|custom
  *   ?startDate=YYYY-MM-DD
  *   ?endDate=YYYY-MM-DD
  */
 app.get('/api/router/history', async (req, res) => {
-    const site = req.query.site || 'Gizi';
+    const site = req.query.site;
     const period = req.query.period || 'harian';
     const startDate = req.query.startDate || null;
     const endDate = req.query.endDate || null;
+
+    if (!site) {
+        return res.status(400).json({ success: false, error: 'Parameter site wajib diisi.' });
+    }
 
     try {
         const { source, samples } = await getRawSamples(site, startDate, endDate);
@@ -597,18 +521,22 @@ app.get('/api/router/history', async (req, res) => {
 /**
  * Endpoint: Export laporan trafik (JSON atau CSV)
  * Query params:
- *   ?site=Gizi
+ *   ?site=<nama-site> (wajib)
  *   ?period=harian|mingguan|bulanan|tahunan|custom
  *   ?startDate=YYYY-MM-DD
  *   ?endDate=YYYY-MM-DD
  *   ?format=json|csv  (default: json)
  */
 app.get('/api/router/history/export', async (req, res) => {
-    const site = req.query.site || 'Gizi';
+    const site = req.query.site;
     const period = req.query.period || 'harian';
     const startDate = req.query.startDate || null;
     const endDate = req.query.endDate || null;
     const format = (req.query.format || 'json').toLowerCase();
+
+    if (!site) {
+        return res.status(400).json({ success: false, error: 'Parameter site wajib diisi.' });
+    }
 
     try {
         const { samples } = await getRawSamples(site, startDate, endDate);
@@ -644,7 +572,7 @@ app.get('/api/router/history/export', async (req, res) => {
 
 /**
  * Endpoint: Log downtime & incident events per-site
- * Query param: ?site=Gizi
+ * Query param: ?site=<nama-site>
  */
 app.get('/api/router/downtime-events', (req, res) => {
     const site = req.query.site;
@@ -661,7 +589,7 @@ app.get('/api/router/downtime-events', (req, res) => {
 
 /**
  * Endpoint: Reset / bersihkan riwayat log downtime
- * Query param: ?site=Gizi (opsional, jika kosong bersihkan semua)
+ * Query param: ?site=<nama-site> (opsional, jika kosong bersihkan semua)
  */
 app.delete('/api/router/downtime-events', (req, res) => {
     const site = req.query.site;
@@ -674,7 +602,7 @@ app.delete('/api/router/downtime-events', (req, res) => {
 });
 
 /**
- * Background polling worker untuk router yang sudah terkonfigurasi.
+ * Background polling worker untuk site yang punya routerConfig.
  * Mengumpulkan data berkala (setiap 6 detik) secara otomatis di backend
  * agar history tetap tercatat meskipun browser tidak dibuka.
  * Menggunakan failure threshold untuk mencegah false positive akibat jitter jaringan WAN.
@@ -683,16 +611,37 @@ function startBackgroundTrafficCollector() {
     const INTERVAL_MS = 6000;
 
     setInterval(async () => {
-        for (const [siteName, cfg] of Object.entries(SITE_ROUTER_MAP)) {
+        let configuredSites = [];
+        try {
+            let projects = [];
+            if (mongoose.connection.readyState === 1) {
+                projects = await Project.find({}).lean();
+            } else {
+                projects = storage.getLocalProjects();
+            }
+
+            for (const p of projects) {
+                for (const s of (p.sites || [])) {
+                    if (s.routerConfig && s.routerConfig.host) {
+                        configuredSites.push({ siteName: s.name, cfg: s.routerConfig });
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[Collector] Gagal memuat daftar site:', err.message);
+            return;
+        }
+
+        for (const { siteName, cfg } of configuredSites) {
             try {
                 const sample = await fetchMikrotikTraffic({
                     host: cfg.host,
-                    port: cfg.port,
+                    port: cfg.port || 8728,
                     displayPort: cfg.displayPort,
                     user: cfg.user,
                     password: cfg.password,
-                    interface: cfg.interface,
-                    timeout: cfg.timeout || 5,
+                    interface: cfg.interface || 'ether1',
+                    timeout: cfg.timeout || 3,
                     routerModel: cfg.routerModel
                 });
 
@@ -708,8 +657,6 @@ function startBackgroundTrafficCollector() {
 
                 // Jika sebelumnya ada downtime tercatat, pulihkan
                 storage.recordDowntimeEnd(siteName);
-                // Bagian sinkronisasi ARP telah dihapus untuk mengurangi beban API pada router MikroTik
-                // yang menyebabkan timeout dan tercatat sebagai downtime palsu.
 
             } catch (err) {
                 siteFailureCounts[siteName] = (siteFailureCounts[siteName] || 0) + 1;

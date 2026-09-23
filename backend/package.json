@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed:demo": "node scripts/seed_demo.js"
   },
   "keywords": [],
   "author": "",
@@ -17,9 +18,8 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "mongoose": "^9.9.5",
-    "ping": "^1.0.0",
-    "routeros-client": "^1.1.1",
-    "ssh2": "^1.17.0"
+    "node-routeros": "^1.6.8",
+    "ping": "^1.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

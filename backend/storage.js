@@ -252,20 +252,6 @@ module.exports = {
         return newDev;
     },
 
-    seedLocalDevices(devices) {
-        if (localDevices.length === 0) {
-            localDevices = devices.map((d, index) => ({
-                ...d,
-                _id: 'seed_' + (d.id || index + 1),
-                id: d.id || (index + 1),
-                createdAt: new Date().toISOString()
-            }));
-            saveLocalDevices();
-            return { count: localDevices.length, seeded: true };
-        }
-        return { count: localDevices.length, seeded: false };
-    },
-
     updateLocalDevice(id, updateData) {
         const index = localDevices.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
         if (index === -1) return null;
@@ -285,39 +271,6 @@ module.exports = {
     },
 
     // ── Local Fallback Project Operations ──
-    seedLocalProjects() {
-        if (localProjects.length === 0) {
-            const initialData = [
-                {
-                    name: 'POLTEKKES KEMENKES BALI',
-                    code: 'POLTEKKES',
-                    sites: [
-                        { name: 'Gizi', code: 'POLTEKKES-GIZI', routerConfig: { host: '223.27.147.18', port: 8729, displayPort: 8298, user: 'jiwa-monitoring', password: 'Denpasar2026', interface: 'ether5', routerModel: 'RB450Gx4 (RO.POLTEKKES GIZI)', timeout: 5 } },
-                        { name: 'Keperawatan', code: 'POLTEKKES-KEPERAWATAN' },
-                        { name: 'Gigi', code: 'POLTEKKES-GIGI', gedungList: [{name: 'CBT_SEMENTARA'}, {name: 'GEDUNG_PERPUSTAKAAN'}, {name: 'LAB_TERPADU'}, {name: 'GEDUNG_CBT'}] },
-                        { name: 'Direktorat', code: 'POLTEKKES-REKTORAT' },
-                        { name: 'Kebidanan', code: 'POLTEKKES-KEBIDANAN' }
-                    ]
-                },
-                { name: 'Disdikpora Kota Denpasar' },
-                { name: 'DISKOMINFO-DENPASAR' },
-                { name: 'CNI_BALI' },
-                { name: 'IMIGRASI_NGURAH_RAI' },
-                { name: 'UHN_BANGLI' },
-                { name: 'RS_BMC' }
-            ];
-            localProjects = initialData.map((d, index) => ({
-                ...d,
-                _id: 'seed_proj_' + (index + 1),
-                id: (index + 1),
-                createdAt: new Date().toISOString()
-            }));
-            saveLocalProjects();
-            return { count: localProjects.length, seeded: true };
-        }
-        return { count: localProjects.length, seeded: false };
-    },
-
     getLocalProjects() {
         return localProjects;
     },

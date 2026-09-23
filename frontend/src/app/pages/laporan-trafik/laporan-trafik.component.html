@@ -13,6 +13,12 @@
       </div>
     </div>
 
+    <!-- Empty state: belum ada site -->
+    <div *ngIf="sites.length === 0"
+      style="padding:12px 16px;margin-bottom:12px;background:#FEF3C7;border:1px solid #FDE68A;border-radius:8px;font-size:12px;color:#92400E;">
+      Belum ada site. <a routerLink="/project-site" style="color:#92400E;font-weight:600;text-decoration:underline;">Buat project &amp; site pertama</a> untuk mulai melihat laporan trafik.
+    </div>
+
     <!-- Site dropdown -->
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
       <app-site-dropdown

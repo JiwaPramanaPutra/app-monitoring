@@ -1,19 +1,21 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterModule } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
+import { ProjectService } from '../../services/project.service';
 import Swal from 'sweetalert2';
 
 @Component({
   selector: 'app-laporan',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent, SiteDropdownComponent],
+  imports: [CommonModule, FormsModule, RouterModule, SidebarComponent, SiteDropdownComponent],
   templateUrl: './laporan.component.html',
   styleUrls: ['./laporan.component.css']
 })
 export class LaporanComponent implements OnInit {
-  constructor(private cdr: ChangeDetectorRef) {}
+  constructor(private cdr: ChangeDetectorRef, private projectService: ProjectService) {}
 
   searchText = '';
   filterType = '';
@@ -24,6 +26,7 @@ export class LaporanComponent implements OnInit {
 
   allDevices: any[] = [];
   filteredDevices: any[] = [];
+  sites: string[] = [];
 
   get isClient(): boolean {
     try {
@@ -46,7 +49,7 @@ export class LaporanComponent implements OnInit {
     type: 'Jaringan',
     masalah: '',
     tindakan: '',
-    site: 'Direktorat',
+    site: '',
     gedung: '',
     lantai: '',
     ruangan: '',
@@ -56,13 +59,21 @@ export class LaporanComponent implements OnInit {
   reports: any[] = [];
 
   ngOnInit() {
+    this.projectService.sites$.subscribe(sites => {
+      this.sites = sites || [];
+      if (!this.newReport.site && this.sites.length > 0) {
+        this.newReport.site = this.sites[0];
+        this.filterDevicesBySite(this.newReport.site);
+      }
+    });
+
     this.loadReports();
     this.loadAllDevices();
   }
 
   async loadAllDevices() {
     try {
-      const res = await fetch('http://localhost:3000/api/devices');
+      const res = await fetch('/api/devices');
       const result = await res.json();
       if (result.success) {
         this.allDevices = result.devices || [];
@@ -100,7 +111,7 @@ export class LaporanComponent implements OnInit {
       if (this.searchText) params.append('search', this.searchText);
       if (this.filterType) params.append('type', this.filterType);
 
-      const res = await fetch(`http://localhost:3000/api/laporan?${params.toString()}`);
+      const res = await fetch(`/api/laporan?${params.toString()}`);
       const result = await res.json();
       if (result.success) {
         this.reports = result.data;
@@ -117,17 +128,18 @@ export class LaporanComponent implements OnInit {
     this.showModal = false;
     this.isEditing = false;
     this.editingId = null;
+    const defaultSite = this.sites[0] || '';
     this.newReport = {
       type: 'Jaringan',
       masalah: '',
       tindakan: '',
-      site: 'Direktorat',
+      site: defaultSite,
       gedung: '',
       lantai: '',
       ruangan: '',
       perangkatTerkait: ''
     };
-    this.filterDevicesBySite('Direktorat');
+    this.filterDevicesBySite(defaultSite);
     this.cdr.detectChanges();
   }
 
@@ -172,8 +184,8 @@ export class LaporanComponent implements OnInit {
 
     try {
       const url = this.isEditing
-        ? `http://localhost:3000/api/laporan/${this.editingId}`
-        : 'http://localhost:3000/api/laporan';
+        ? `/api/laporan/${this.editingId}`
+        : '/api/laporan';
 
       const method = this.isEditing ? 'PUT' : 'POST';
 
@@ -229,7 +241,7 @@ export class LaporanComponent implements OnInit {
     if (!confirmResult.isConfirmed) return;
 
     try {
-      const res = await fetch(`http://localhost:3000/api/laporan/${id}`, {
+      const res = await fetch(`/api/laporan/${id}`, {
         method: 'DELETE'
       });
       const result = await res.json();
@@ -265,6 +277,6 @@ export class LaporanComponent implements OnInit {
     const params = new URLSearchParams();
     if (this.searchText) params.append('search', this.searchText);
     if (this.filterType) params.append('type', this.filterType);
-    window.open(`http://localhost:3000/api/laporan/export/csv?${params.toString()}`, '_blank');
+    window.open(`/api/laporan/export/csv?${params.toString()}`, '_blank');
   }
 }

@@ -1,14 +1,16 @@
 # NEXUS (Nadi) - Project Overview
 
-<!-- blueprint:source-hash cf8a81f38032f2109ec89e23fe316d8ecc413df950e70b74af2c2ae7213792a4 -->
+<!-- blueprint:source-hash 99c73b7d98637217cf89ce840ac237677a87e89e2cfcbe429408629b21433fb1 -->
 
-> Sistem monitoring jaringan & infrastruktur terpusat multi-site (Direktorat, Gigi, Keperawatan, Gizi, Kebidanan): trafik router real-time, status perangkat, dan laporan pemeliharaan.
+> Sistem monitoring jaringan & infrastruktur terpusat multi-site, open source & self-hosted: trafik router real-time, status perangkat, dan laporan pemeliharaan.
 
 ## Problem
 
 Kondisi perangkat jaringan dan infrastruktur di beberapa site belum terpantau terpusat, sehingga anomali trafik, perangkat offline, dan riwayat pemeliharaan sulit dideteksi dan ditelusuri. Sistem ini menyatukan monitoring trafik, status perangkat, dan pencatatan laporan gangguan dalam satu dashboard.
 
 ## Users
+
+Sasaran publik: open source & self-hosted - organisasi mana pun yang mengelola jaringan multi-site dapat deploy instance sendiri.
 
 - **EOS (Engineer On Site)** - teknisi lapangan; akses penuh: monitoring, manajemen perangkat, laporan, konfigurasi, dan manajemen pengguna.
 - **Client** - pimpinan/tamu; akses hanya-baca ke dashboard, status jaringan, dan laporan.
@@ -17,7 +19,8 @@ Akses dibatasi per role (EOS vs Client) dan dapat dibatasi per site.
 
 ## Usage model
 
-- Proyek internal/infrastruktur; tidak untuk dimonetisasi secara langsung.
+- Proyek open source; tidak untuk dimonetisasi secara langsung.
+- Setiap organisasi men-deploy instance sendiri (self-hosted); data dan kredensial tetap di infrastruktur masing-masing.
 - Sistem memerlukan koneksi jaringan lokal/VPN ke router MikroTik dan perangkat lain agar fungsi RouterOS API dan ICMP ping dapat berjalan.
 
 ## Features
@@ -28,8 +31,13 @@ Akses dibatasi per role (EOS vs Client) dan dapat dibatasi per site.
 4. **Device Management** - CRUD perangkat jaringan dan fungsi remote reboot (SSH/HTTP).
 5. **Histori Trafik** - Penyimpanan sampel trafik dan grafik laporan historis.
 6. **Laporan Gangguan** - Pencatatan tiket/laporan maintenance oleh teknisi.
-7. **Audit Log & User Management** - Pencatatan log aktivitas dan CRUD pengguna.
+7. **Audit Log & User Management** (post-v1) - Pencatatan log aktivitas dan CRUD pengguna.
 8. **Notifikasi Telegram/WhatsApp** - Alert otomatis saat perangkat terdeteksi offline.
+9. **Sanitasi Data & Site Dinamis** - Hapus data institusi dari kode dan seed; daftar site jadi data dari koleksi Project; API base URL configurable.
+10. **Rampungkan Fitur Setengah Jadi** - Export CSV laporan, keputusan reboot & Telegram, perilaku saat database offline.
+12. **Packaging Self-Host** - README, `.env.example`, LICENSE, Docker Compose, dan demo seed.
+
+Backlog (bukan MVP): AI troubleshooting - AI membaca struktur dan konfigurasi jaringan untuk membantu network engineer mendiagnosis masalah.
 
 ## Data model
 
@@ -78,7 +86,7 @@ Akses dibatasi per role (EOS vs Client) dan dapat dibatasi per site.
 
 ## Monetization
 
-Proyek internal/infrastruktur; tidak untuk dimonetisasi secara langsung.
+Proyek open source; tidak untuk dimonetisasi secara langsung.
 
 ## UI/UX
 
@@ -94,13 +102,13 @@ Dashboard terpusat: widget trafik real-time, tabel perangkat dengan status warna
 
 ## Deployment
 
+Model open source & self-hosted: tiap organisasi deploy instance sendiri.
+
 - **Backend:** Node.js server
 - **Frontend:** Angular build server (folder `dist`)
+- **Paket:** Docker Compose (backend + frontend + MongoDB) - direncanakan
 - **Konektivitas:** jaringan lokal/VPN ke router dan perangkat (lihat Usage model)
-
-> TODO (confirm): apakah backend & frontend di-deploy di VPS/server on-premise yang sama?
 
 ## Open questions
 
 > - Fitur build-plan #8 (Notifikasi Telegram/WhatsApp) belum ada padanannya di project-plan §3.
-> - Target hosting backend & frontend belum dikonfirmasi (TODO di project-plan §8).

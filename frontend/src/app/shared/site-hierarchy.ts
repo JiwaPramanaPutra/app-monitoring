@@ -5,30 +5,34 @@ export interface SiteNode {
   children?: SiteNode[];
 }
 
-export const SITE_HIERARCHY: SiteNode[] = [
-  { label: 'Disdikpora_Kota_Denpasar', children: [] },
-  {
-    label: 'POLTEKKES',
-    children: [
-      { label: 'POLTEKKES-GIZI', siteValue: 'Gizi' },
-      { label: 'POLTEKKES-KEPERAWATAN', siteValue: 'Keperawatan' },
-      {
-        label: 'POLTEKKES-GIGI',
-        siteValue: 'Gigi',
-        children: [
-          { label: 'CBT_SEMENTARA', siteValue: 'Gigi', buildingValue: 'CBT_SEMENTARA' },
-          { label: 'GEDUNG_PERPUSTAKAAN', siteValue: 'Gigi', buildingValue: 'GEDUNG_PERPUSTAKAAN' },
-          { label: 'LAB_TERPADU', siteValue: 'Gigi', buildingValue: 'LAB_TERPADU' },
-          { label: 'GEDUNG_CBT', siteValue: 'Gigi', buildingValue: 'GEDUNG_CBT' }
-        ]
-      },
-      { label: 'POLTEKKES-REKTORAT', siteValue: 'Direktorat' },
-      { label: 'POLTEKKES-KEBIDANAN', siteValue: 'Kebidanan' }
-    ]
-  },
-  { label: 'DISKOMINFO-DENPASAR', children: [] },
-  { label: 'CNI_BALI', children: [] },
-  { label: 'IMIGRASI_NGURAH_RAI', children: [] },
-  { label: 'UHN_BANGLI', children: [] },
-  { label: 'RS_BMC', children: [] }
-];
+/** Bentuk tree SiteNode dari daftar project (respons /api/projects). */
+export function buildSiteTree(projects: any[]): SiteNode[] {
+  return (projects || []).map(p => ({
+    label: p.name,
+    children: ((p.sites || []) as any[]).map(s => ({
+      label: s.name,
+      siteValue: s.name,
+      children: ((s.gedungList || []) as any[]).map(g => ({
+        label: g.name,
+        siteValue: s.name,
+        buildingValue: g.name,
+        children: ((g.floors || []) as any[]).map(f => ({
+          label: f.name,
+          siteValue: s.name,
+          buildingValue: g.name
+        }))
+      }))
+    }))
+  }));
+}
+
+/** Daftar nama site unik dari daftar project, urut sesuai data. */
+export function extractSiteNames(projects: any[]): string[] {
+  const names: string[] = [];
+  for (const p of projects || []) {
+    for (const s of ((p.sites || []) as any[])) {
+      if (s.name && !names.includes(s.name)) names.push(s.name);
+    }
+  }
+  return names;
+}

@@ -7,7 +7,7 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { SITE_HIERARCHY, SiteNode } from '../../shared/site-hierarchy';
+import { SiteNode } from '../../shared/site-hierarchy';
 import { ProjectService } from '../../services/project.service';
 
 @Component({
@@ -28,7 +28,7 @@ export class SiteDropdownComponent implements OnInit {
     label: string;
   }>();
 
-  hierarchy: SiteNode[] = SITE_HIERARCHY;
+  hierarchy: SiteNode[] = [];
   isOpen = false;
   /** Stack index yang sedang hover untuk multi-level submenu */
   activeParentPath: number[] = [];
@@ -37,11 +37,7 @@ export class SiteDropdownComponent implements OnInit {
 
   ngOnInit() {
     this.projectService.siteTree$.subscribe(tree => {
-      if (tree && tree.length > 0) {
-        this.hierarchy = tree;
-      } else {
-        this.hierarchy = SITE_HIERARCHY;
-      }
+      this.hierarchy = tree || [];
     });
   }
 

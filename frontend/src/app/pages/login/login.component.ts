@@ -3,10 +3,10 @@ import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
-// Dummy user database — hanya 2 role: EOS dan Client
+// Login mock sementara — digantikan auth backend (JWT) pada fitur berikutnya.
 const DUMMY_USERS: Record<string, { name: string; role: 'EOS' | 'Client'; initials: string; pass: string }> = {
-  'admin': { name: 'Jiwa Pramana', role: 'EOS', initials: 'JP', pass: 'admin' },
-  'client': { name: 'Poltekkes', role: 'Client', initials: 'PL', pass: 'client' }
+  'admin': { name: 'Administrator', role: 'EOS', initials: 'AD', pass: 'admin' },
+  'client': { name: 'Viewer', role: 'Client', initials: 'VW', pass: 'client' }
 };
 
 @Component({

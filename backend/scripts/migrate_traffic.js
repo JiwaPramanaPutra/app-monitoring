@@ -58,7 +58,7 @@ async function migrate() {
 
     for (let i = 0; i < samples.length; i += BATCH_SIZE) {
         const batch = samples.slice(i, i + BATCH_SIZE).map(s => ({
-            site: s.site || 'Gizi',
+            site: s.site || 'Unknown',
             timestamp: new Date(s.timestamp),
             txMbps: Number(s.txMbps) || 0,
             rxMbps: Number(s.rxMbps) || 0,

@@ -1,9 +1,10 @@
 import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
+import { ProjectService } from '../../services/project.service';
 
 interface TrafficData {
   label: string;
@@ -33,12 +34,12 @@ interface DowntimeEvent {
 @Component({
   selector: 'app-laporan-trafik',
   standalone: true,
-  imports: [CommonModule, FormsModule, SidebarComponent, SiteDropdownComponent],
+  imports: [CommonModule, FormsModule, RouterModule, SidebarComponent, SiteDropdownComponent],
   templateUrl: './laporan-trafik.component.html',
   styleUrls: ['./laporan-trafik.component.css']
 })
 export class LaporanTrafikComponent implements OnInit, OnDestroy {
-  sites = ['Direktorat', 'Gigi', 'Keperawatan', 'Gizi', 'Kebidanan'];
+  sites: string[] = [];
   periods = [
     { value: 'harian', label: 'Harian' },
     { value: 'mingguan', label: 'Mingguan' },
@@ -47,8 +48,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     { value: 'custom', label: 'Custom' }
   ];
 
-  selectedSite = 'Gizi';
-  selectedSiteLabel = 'Gizi';
+  selectedSite = '';
+  selectedSiteLabel = '';
   selectedPeriod = 'harian';
 
   // Date range filter
@@ -99,7 +100,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   constructor(
     private router: Router,
     private route: ActivatedRoute,
-    private cdr: ChangeDetectorRef
+    private cdr: ChangeDetectorRef,
+    private projectService: ProjectService
   ) {}
 
   ngOnInit() {
@@ -111,14 +113,33 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.startDate = this.today;
     this.endDate = this.today;
 
+    // Daftar site mengikuti data project (dinamis)
+    this.projectService.sites$.subscribe(sites => {
+      this.sites = sites || [];
+      if (this.sites.length === 0) return;
+
+      const requested = this.selectedSite || this.route.snapshot.queryParams['site'];
+      const next = requested && this.sites.includes(requested) ? requested : this.sites[0];
+      if (next !== this.selectedSite) {
+        this.selectedSite = next;
+        this.selectedSiteLabel = next;
+        this.updateQueryParams();
+        this.fetchRealHistoryAndEvents();
+        this.fetchLiveTraffic();
+      }
+    });
+
     // Baca query parameters
     this.route.queryParams.subscribe(params => {
-      this.selectedSite = params['site'] || 'Gizi';
+      const requestedSite = params['site'];
       this.selectedPeriod = params['period'] || 'harian';
 
-      // Validasi site
-      if (!this.sites.includes(this.selectedSite)) {
-        this.selectedSite = 'Gizi';
+      // Pakai site dari URL bila dikenal; selain itu sites$ yang menentukan
+      if (requestedSite && this.sites.includes(requestedSite) && requestedSite !== this.selectedSite) {
+        this.selectedSite = requestedSite;
+        this.selectedSiteLabel = requestedSite;
+        this.fetchRealHistoryAndEvents();
+        this.fetchLiveTraffic();
       }
 
       // Validasi period
@@ -138,14 +159,11 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         // Set default berdasarkan periode yang dipilih
         this.setDefaultDateRange();
       }
-
-      this.fetchRealHistoryAndEvents();
-      this.fetchLiveTraffic();
     });
 
     // Polling live traffic setiap 3 detik
     this.liveTrafficTimer = setInterval(() => {
-      this.fetchLiveTraffic();
+      if (this.selectedSite) this.fetchLiveTraffic();
     }, 3000);
   }
 
@@ -158,7 +176,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   fetchRealHistoryAndEvents() {
     // 1. Fetch downtime events from backend
-    fetch(`http://localhost:3000/api/router/downtime-events?site=${encodeURIComponent(this.selectedSite)}`)
+    fetch(`/api/router/downtime-events?site=${encodeURIComponent(this.selectedSite)}`)
       .then(res => res.json())
       .then(res => {
         if (res && res.success && Array.isArray(res.events)) {
@@ -189,7 +207,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     if (this.startDate) params.set('startDate', this.startDate);
     if (this.endDate) params.set('endDate', this.endDate);
 
-    fetch(`http://localhost:3000/api/router/history?${params.toString()}`)
+    fetch(`/api/router/history?${params.toString()}`)
       .then(res => res.json())
       .then(res => {
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
@@ -236,12 +254,12 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     if (this.startDate) params.set('startDate', this.startDate);
     if (this.endDate) params.set('endDate', this.endDate);
 
-    window.open(`http://localhost:3000/api/router/history/export?${params.toString()}`, '_blank');
+    window.open(`/api/router/history/export?${params.toString()}`, '_blank');
   }
 
 
   fetchLiveTraffic() {
-    fetch(`http://localhost:3000/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+    fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.siteConfigured && data.connected && typeof data.txMbps === 'number') {
@@ -251,7 +269,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           this.liveRouterIp = data.ip || '';
           this.liveRouterModel = data.routerModel || '';
 
-          // Jika periode harian dan site terkonfigurasi (Gizi), sinkronkan data point terakhir & metrik current
+          // Jika periode harian dan site terkonfigurasi, sinkronkan data point terakhir & metrik current
           if (this.selectedPeriod === 'harian' && this.chartData.length > 0) {
             const lastPoint = this.chartData[this.chartData.length - 1];
             lastPoint.tx = this.liveTxMbps;
@@ -395,7 +413,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     const nonZeroRx = this.chartData.map(d => d.rx).filter(v => v > 0);
 
     // Current: jika ada live router connected gunakan live value, jika tidak gunakan nilai chart point terakhir yg ada data
-    if (this.isLiveRouterConnected && this.selectedSite === 'Gizi') { // Asumsi Gizi yg live
+    if (this.isLiveRouterConnected) {
       this.txCurrent = Number(this.liveTxMbps.toFixed(2));
       this.rxCurrent = Number(this.liveRxMbps.toFixed(2));
     } else {
@@ -449,7 +467,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       let lastRecover = '—';
 
       try {
-        const res = await fetch(`http://localhost:3000/api/router/downtime-events?site=${encodeURIComponent(site)}`);
+        const res = await fetch(`/api/router/downtime-events?site=${encodeURIComponent(site)}`);
         if (res.ok) {
           const data = await res.json();
           const events: any[] = data.events || [];
