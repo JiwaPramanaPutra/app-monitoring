@@ -7,6 +7,7 @@ const TRAFFIC_FILE = path.join(DATA_DIR, 'traffic_history.json');
 const DOWNTIME_FILE = path.join(DATA_DIR, 'downtime_events.json');
 const DEVICES_FILE = path.join(DATA_DIR, 'devices.json');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
+const LAPORAN_FILE = path.join(DATA_DIR, 'laporan.json');
 
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -16,6 +17,7 @@ let trafficHistory = [];
 let downtimeEvents = [];
 let localDevices = [];
 let localProjects = [];
+let localLaporans = [];
 const MAX_TRAFFIC_SAMPLES = 25000;
 
 function loadStoredData() {
@@ -62,6 +64,17 @@ function loadStoredData() {
         console.error('Failed to load projects.json:', e.message);
         localProjects = [];
     }
+
+    try {
+        if (fs.existsSync(LAPORAN_FILE)) {
+            const raw = fs.readFileSync(LAPORAN_FILE, 'utf8');
+            localLaporans = JSON.parse(raw);
+            if (!Array.isArray(localLaporans)) localLaporans = [];
+        }
+    } catch (e) {
+        console.error('Failed to load laporan.json:', e.message);
+        localLaporans = [];
+    }
 }
 
 function saveLocalDevices() {
@@ -77,6 +90,14 @@ function saveLocalProjects() {
         fs.writeFileSync(PROJECTS_FILE, JSON.stringify(localProjects, null, 2), 'utf8');
     } catch (err) {
         console.error('Error saving local projects:', err.message);
+    }
+}
+
+function saveLocalLaporans() {
+    try {
+        fs.writeFileSync(LAPORAN_FILE, JSON.stringify(localLaporans, null, 2), 'utf8');
+    } catch (err) {
+        console.error('Error saving local laporan:', err.message);
     }
 }
 
@@ -255,7 +276,8 @@ module.exports = {
     updateLocalDevice(id, updateData) {
         const index = localDevices.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
         if (index === -1) return null;
-        localDevices[index] = { ...localDevices[index], ...updateData, updatedAt: new Date().toISOString() };
+        const { _id, createdAt, updatedAt, ...safeUpdate } = updateData || {};
+        localDevices[index] = { ...localDevices[index], ...safeUpdate, updatedAt: new Date().toISOString() };
         saveLocalDevices();
         return localDevices[index];
     },
@@ -286,7 +308,8 @@ module.exports = {
     updateLocalProject(id, updateData) {
         const index = localProjects.findIndex(p => String(p._id) === String(id) || String(p.id) === String(id));
         if (index === -1) return null;
-        localProjects[index] = { ...localProjects[index], ...updateData, updatedAt: new Date().toISOString() };
+        const { _id, createdAt, updatedAt, ...safeUpdate } = updateData || {};
+        localProjects[index] = { ...localProjects[index], ...safeUpdate, updatedAt: new Date().toISOString() };
         saveLocalProjects();
         return localProjects[index];
     },
@@ -296,6 +319,38 @@ module.exports = {
         localProjects = localProjects.filter(p => String(p._id) !== String(id) && String(p.id) !== String(id));
         if (localProjects.length < initialLen) {
             saveLocalProjects();
+            return true;
+        }
+        return false;
+    },
+
+    // ── Local Fallback Laporan Operations ──
+    getLocalLaporan() {
+        return localLaporans;
+    },
+
+    saveLocalLaporan(laporan) {
+        const id = 'lap_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        const newLaporan = { ...laporan, _id: id, createdAt: new Date().toISOString() };
+        localLaporans.unshift(newLaporan);
+        saveLocalLaporans();
+        return newLaporan;
+    },
+
+    updateLocalLaporan(id, updateData) {
+        const index = localLaporans.findIndex(l => String(l._id) === String(id));
+        if (index === -1) return null;
+        const { _id, createdAt, updatedAt, ...safeUpdate } = updateData || {};
+        localLaporans[index] = { ...localLaporans[index], ...safeUpdate, updatedAt: new Date().toISOString() };
+        saveLocalLaporans();
+        return localLaporans[index];
+    },
+
+    deleteLocalLaporan(id) {
+        const initialLen = localLaporans.length;
+        localLaporans = localLaporans.filter(l => String(l._id) !== String(id));
+        if (localLaporans.length < initialLen) {
+            saveLocalLaporans();
             return true;
         }
         return false;

@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "seed:demo": "node scripts/seed_demo.js"
+    "seed:demo": "node scripts/seed_demo.js",
+    "telegram:test": "node scripts/test_telegram.js"
   },
   "keywords": [],
   "author": "",

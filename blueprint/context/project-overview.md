@@ -1,6 +1,6 @@
 # NEXUS (Nadi) - Project Overview
 
-<!-- blueprint:source-hash 81df0e550eec49e5f14dc95ab5f3d0504b41b0fe3535c053b74a5d60053ebda5 -->
+<!-- blueprint:source-hash 28c23ef82a3c33168a7d9e51beeb138b63d469623fa83c756a1053627bfd4fda -->
 
 > Sistem monitoring jaringan & infrastruktur terpusat multi-site, open source & self-hosted: trafik router real-time, status perangkat, dan laporan pemeliharaan.
 
@@ -28,7 +28,7 @@ Akses dibatasi per role (EOS vs Client) dan dapat dibatasi per site.
 1. **Autentikasi & RBAC** - Login JWT dan pemisahan akses EOS (Admin) & Client (Viewer).
 2. **Monitoring Trafik Real-time** (headline) - Integrasi RouterOS API untuk grafik TX/RX per site.
 3. **Monitoring Status & Ping** - Polling otomatis ping untuk deteksi perangkat offline dan latensi.
-4. **Device Management** - CRUD perangkat jaringan dan fungsi remote reboot (SSH/HTTP).
+4. **Device Management** - CRUD perangkat jaringan (remote reboot menyusul post-v1).
 5. **Histori Trafik** - Penyimpanan sampel trafik dan grafik laporan historis.
 6. **Laporan Gangguan** - Pencatatan tiket/laporan maintenance oleh teknisi.
 7. **Audit Log & User Management** (post-v1) - Pencatatan log aktivitas dan CRUD pengguna.
@@ -37,7 +37,7 @@ Akses dibatasi per role (EOS vs Client) dan dapat dibatasi per site.
 10. **Rampungkan Fitur Setengah Jadi** - Export CSV laporan, keputusan reboot & Telegram, perilaku saat database offline.
 12. **Packaging Self-Host** - README, `.env.example`, LICENSE, Docker Compose, dan demo seed.
 
-Backlog (bukan MVP): AI troubleshooting - AI membaca struktur dan konfigurasi jaringan untuk membantu network engineer mendiagnosis masalah.
+Backlog (bukan MVP): remote reboot perangkat (SSH/HTTP); AI troubleshooting - AI membaca struktur dan konfigurasi jaringan untuk membantu network engineer mendiagnosis masalah.
 
 ## Data model
 

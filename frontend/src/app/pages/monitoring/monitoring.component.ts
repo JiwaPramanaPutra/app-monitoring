@@ -76,7 +76,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private trafficHistory: { txBps: number; rxBps: number }[] = [];
   private trafficTimer: any = null;
   private deviceStatusTimer: any = null;
-  private rebootPollTimer: any = null;
   readonly DEVICE_REFRESH_INTERVAL = 30000;
   private readonly MAX_HISTORY = 45;
 
@@ -90,13 +89,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   // Detail modal
   selectedDevice: MonitoringDevice | null = null;
   showDetailModal = false;
-
-  // Reboot modal
-  showRebootModal = false;
-  isRebooting = false;
-  rebootTargetDevice: MonitoringDevice | null = null;
-  rebootUsername = '';
-  rebootPassword = '';
 
   // Management modal
   showManagementModal = false;
@@ -175,10 +167,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     if (this.deviceStatusTimer) {
       clearInterval(this.deviceStatusTimer);
       this.deviceStatusTimer = null;
-    }
-    if (this.rebootPollTimer) {
-      clearInterval(this.rebootPollTimer);
-      this.rebootPollTimer = null;
     }
   }
 
@@ -504,119 +492,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.selectedDevice = null;
   }
 
-  // Reboot Modal
-  rebootDevice(device: MonitoringDevice) {
-    this.activeDropdown = null;
-    this.rebootTargetDevice = device;
-    this.rebootUsername = (device as any).sshUsername || '';
-    this.rebootPassword = (device as any).sshPassword || '';
-    this.isRebooting = false;
-    this.showRebootModal = true;
-  }
-
-  closeRebootModal() {
-    if (this.isRebooting) return;
-    this.showRebootModal = false;
-    this.rebootTargetDevice = null;
-    this.rebootUsername = '';
-    this.rebootPassword = '';
-  }
-
-  confirmReboot() {
-    if (!this.rebootTargetDevice) return;
-    this.isRebooting = true;
-    const dev = this.rebootTargetDevice;
-
-    // Panggil Backend Reboot API (Mendukung SSH & HTTP Web API TP-Link)
-    this.api.fetch('/api/device/reboot', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        host: dev.ip,
-        port: (dev as any).sshPort || 22,
-        brand: dev.brand,
-        username: this.rebootUsername.trim() || undefined,
-        password: this.rebootPassword.trim() || undefined
-      })
-    })
-      .then(async (res) => {
-        const data = await res.json();
-        this.isRebooting = false;
-        this.showRebootModal = false;
-
-        const now = new Date();
-        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-        const methodStr = data.method === 'web-api' ? 'Web API' : 'SSH';
-
-        if (res.ok && data.success) {
-          this.activityLogs.unshift({
-            time: timeStr,
-            user: this.currentRole,
-            message: `melakukan reboot ${dev.name} via ${methodStr}`,
-            status: 'Success'
-          });
-          this.showToastNotification(`Reboot berhasil dikirim ke ${dev.name} (${dev.ip}). Memantau status...`, 'success');
-
-          // Tandai sementara Offline setelah reboot dikirim
-          const devIdx = this.devices.findIndex(d => (d._id || d.id) === (dev._id || dev.id));
-          if (devIdx !== -1) { (this.devices[devIdx] as any).status = 'Offline'; }
-          this.cdr.markForCheck();
-
-          // Poll status tiap 5 detik sampai Online kembali (maks 3 menit = 36x)
-          if (this.rebootPollTimer) clearInterval(this.rebootPollTimer);
-          let pollCount = 0;
-          const maxPolls = 36;
-          this.rebootPollTimer = setInterval(async () => {
-            pollCount++;
-            try {
-              const pingRes = await this.api.fetch('/api/ping-all', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hosts: [dev.ip] })
-              });
-              const pingData = await pingRes.json();
-              const result = pingData.results && pingData.results[0];
-              if (result && result.alive) {
-                clearInterval(this.rebootPollTimer);
-                this.rebootPollTimer = null;
-                if (devIdx !== -1) {
-                  this.devices[devIdx].status = 'Online';
-                  (this.devices[devIdx] as any).pingTime = result.time;
-                }
-                const nowAfter = new Date();
-                const ts = String(nowAfter.getHours()).padStart(2,'0') + ':' + String(nowAfter.getMinutes()).padStart(2,'0');
-                this.activityLogs.unshift({ time: ts, user: 'System', message: dev.name + ' kembali Online setelah reboot (' + result.time + ')', status: 'Success' });
-                this.showToastNotification(dev.name + ' kembali Online! (' + result.time + ')', 'success');
-              }
-            } catch (e) { /* silent */ }
-            if (pollCount >= maxPolls) { clearInterval(this.rebootPollTimer); this.rebootPollTimer = null; }
-            this.cdr.markForCheck();
-          }, 5000);
-        } else {
-          // Jika SSH / Web API belum aktif atau password salah
-          this.activityLogs.unshift({
-            time: timeStr,
-            user: this.currentRole,
-            message: `gagal reboot ${dev.name} (${data.error || 'Connection failed'})`,
-            status: 'Alert'
-          });
-          this.showToastNotification(
-            `Gagal reboot ${dev.name}: ${data.error || 'Pastikan kredensial & akses perangkat benar'}`,
-            'alert'
-          );
-        }
-        this.rebootTargetDevice = null;
-      })
-      .catch((err) => {
-        this.isRebooting = false;
-        this.showRebootModal = false;
-        this.showToastNotification(
-          `Gagal menghubungi backend monitoring: ${err.message}`,
-          'alert'
-        );
-        this.rebootTargetDevice = null;
-      });
-  }
-
   // Edit Modal
   openEditModal(device: MonitoringDevice) {
     this.activeDropdown = null;
@@ -815,6 +690,11 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       return;
     }
 
+    if (!this.newDevice.siteLocation) {
+      this.showToastNotification('Pilih site terlebih dahulu. Buat project & site di halaman Project & Site.', 'alert');
+      return;
+    }
+
     const nextId = this.devices.length > 0
       ? Math.max(...this.devices.map(d => typeof d.id === 'number' ? d.id : 0)) + 1
       : 1;
@@ -902,7 +782,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       lantai: '',
       ruangan: '',
       capabilities: {
-        reboot: true,
         webManagement: true,
         cli: true,
         activityLogs: true

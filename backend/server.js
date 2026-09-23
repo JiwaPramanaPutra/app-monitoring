@@ -1076,13 +1076,65 @@ app.delete('/api/devices/:id', async (req, res) => {
 // CRUD ENDPOINTS FOR LAPORAN
 // =========================================================
 
+// Filter laporan dipakai oleh GET /api/laporan dan export CSV.
+function filterLaporan(laporans, search, type) {
+    let result = laporans || [];
+    if (type) result = result.filter(l => l.type === type);
+    if (search) {
+        const q = String(search).toLowerCase();
+        result = result.filter(l =>
+            String(l.masalah || '').toLowerCase().includes(q) ||
+            String(l.tindakan || '').toLowerCase().includes(q)
+        );
+    }
+    return result;
+}
+
+function csvCell(value) {
+    let s = value === null || value === undefined ? '' : String(value);
+    // Netralkan formula injection saat CSV dibuka di Excel/Sheets.
+    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g, '""') + '"';
+}
+
+async function getAllLaporan() {
+    if (mongoose.connection.readyState === 1) {
+        return await Laporan.find({}).sort({ createdAt: -1 }).lean();
+    }
+    return storage.getLocalLaporan();
+}
+
 app.get('/api/laporan', async (req, res) => {
     try {
-        if (mongoose.connection.readyState === 1) {
-            const laporans = await Laporan.find({}).sort({ createdAt: -1 }).lean();
-            return res.json({ success: true, data: laporans });
+        const laporans = await getAllLaporan();
+        const filtered = filterLaporan(laporans, req.query.search, req.query.type);
+        return res.json({ success: true, data: filtered });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+/**
+ * Endpoint: Export laporan ke CSV (mengikuti filter GET /api/laporan)
+ * Query params: ?search=...&type=...
+ */
+app.get('/api/laporan/export/csv', async (req, res) => {
+    try {
+        const laporans = await getAllLaporan();
+        const filtered = filterLaporan(laporans, req.query.search, req.query.type);
+
+        const lines = ['Tanggal,Jenis,Site,Gedung,Lantai,Ruangan,Perangkat,Masalah,Tindakan,Teknisi'];
+        for (const l of filtered) {
+            lines.push([
+                l.date, l.type, l.site, l.gedung, l.lantai, l.ruangan,
+                l.perangkatTerkait, l.masalah, l.tindakan, l.technician
+            ].map(csvCell).join(','));
         }
-        return res.json({ success: true, data: [] }); // Fallback jika DB offline
+
+        const filename = `laporan_${new Date().toISOString().split('T')[0]}.csv`;
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        return res.send('\uFEFF' + lines.join('\r\n'));
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -1095,7 +1147,8 @@ app.post('/api/laporan', async (req, res) => {
             await newLaporan.save();
             return res.json({ success: true, message: 'Laporan berhasil disimpan', data: newLaporan });
         }
-        res.status(503).json({ success: false, error: 'Database offline, tidak bisa menyimpan laporan' });
+        const newLaporan = storage.saveLocalLaporan(req.body);
+        return res.json({ success: true, message: 'Laporan berhasil disimpan (penyimpanan lokal)', data: newLaporan });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -1107,7 +1160,8 @@ app.put('/api/laporan/:id', async (req, res) => {
             const updated = await Laporan.findByIdAndUpdate(req.params.id, req.body, { new: true });
             return res.json({ success: true, message: 'Laporan diupdate', data: updated });
         }
-        res.status(503).json({ success: false, error: 'Database offline' });
+        const updated = storage.updateLocalLaporan(req.params.id, req.body);
+        return res.json({ success: true, message: 'Laporan diupdate', data: updated });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -1117,9 +1171,10 @@ app.delete('/api/laporan/:id', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
             await Laporan.findByIdAndDelete(req.params.id);
-            return res.json({ success: true, message: 'Laporan dihapus' });
+        } else {
+            storage.deleteLocalLaporan(req.params.id);
         }
-        res.status(503).json({ success: false, error: 'Database offline' });
+        return res.json({ success: true, message: 'Laporan dihapus' });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

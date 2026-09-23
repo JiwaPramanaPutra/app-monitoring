@@ -14,7 +14,7 @@ Sasaran publik: open source & self-hosted - organisasi mana pun yang mengelola j
 - Real-Time Monitoring Trafik Router (TX/RX) via MikroTik API
 - Monitoring Status Perangkat (Online/Offline) via Ping
 - Monitoring Latensi (Ping Time)
-- Device Management (CRUD & Reboot via SSH/Web)
+- Device Management (CRUD perangkat; remote reboot SSH/Web menyusul post-v1)
 - Histori & Laporan Trafik (Grafik Historis)
 - Laporan Gangguan & Maintenance (CRUD)
 - Audit Log Aktivitas Sistem & Pengguna

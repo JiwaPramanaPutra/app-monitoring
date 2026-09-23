@@ -166,6 +166,16 @@ export class LaporanComponent implements OnInit {
       return;
     }
 
+    if (!this.newReport.site) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Validasi Gagal',
+        text: 'Site wajib diisi. Buat project & site terlebih dahulu di halaman Project & Site.',
+        confirmButtonColor: '#3b82f6'
+      });
+      return;
+    }
+
     const technicianName = this.currentUser;
     const payload: any = {
       type: this.newReport.type,

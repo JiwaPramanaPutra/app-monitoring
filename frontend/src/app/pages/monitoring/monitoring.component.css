@@ -5,21 +5,6 @@
   text-decoration: underline;
 }
 
-/* Spinner Animation for Reboot */
-.spinner {
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 /* Floating Toast Notification */
 .toast-card {
   position: fixed;

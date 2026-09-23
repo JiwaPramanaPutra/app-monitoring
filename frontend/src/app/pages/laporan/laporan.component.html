@@ -9,7 +9,7 @@
       </div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-outline" (click)="exportCSV()">Ekspor</button>
-        <button class="btn" (click)="openAddModal()" *ngIf="!isClient">Tambah laporan</button>
+        <button class="btn" (click)="openAddModal()" *ngIf="!isClient && sites.length > 0">Tambah laporan</button>
       </div>
     </div>
 
