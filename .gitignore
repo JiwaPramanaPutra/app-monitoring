@@ -34,3 +34,13 @@ Thumbs.db
 *.bak
 *.out
 *.txt.bak
+
+# Security / Secrets
+.env
+.env.*
+
+# Runtime data (kredensial router/SSH, histori lokal)
+backend/data/
+
+# Local editor/agent settings
+settings.local.json

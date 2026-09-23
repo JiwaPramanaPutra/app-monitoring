@@ -1,0 +1,8 @@
+{
+  "scripts": {
+    "verify": "npm --prefix frontend run verify"
+  },
+  "dependencies": {
+    "ssh2": "^1.17.0"
+  }
+}
