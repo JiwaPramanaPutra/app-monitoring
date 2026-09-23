@@ -12,10 +12,14 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "axios": "^1.20.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "mongoose": "^9.9.5"
+    "mongoose": "^9.9.5",
+    "ping": "^1.0.0",
+    "routeros-client": "^1.1.1",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
