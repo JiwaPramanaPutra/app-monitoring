@@ -26,7 +26,7 @@ Backlog (bukan MVP): AI troubleshooting - AI membaca struktur dan konfigurasi ja
 - Data Perangkat (Device: nama, tipe, merek, model, mac, ip, lokasi, credentials ssh, dll)
 - Data Laporan (Gangguan, tindakan, teknisi, lokasi)
 - Data Sampel Trafik (TrafficSample: TX/RX per site per waktu)
-- Data Pengguna (Users, role, site akses)
+- Data Pengguna: v1 memakai akun dari environment (admin + viewer opsional); penyimpanan user + akses per-site menyusul post-v1
 - Audit Logs (Aktivitas user dan sistem)
 
 ## 5. Tech - What stack are we using?

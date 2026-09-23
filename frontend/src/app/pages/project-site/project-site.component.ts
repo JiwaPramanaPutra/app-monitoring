@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { ProjectService } from '../../services/project.service';
+import Swal from 'sweetalert2';
 
 @Component({
   selector: 'app-project-site',
@@ -103,6 +104,7 @@ export class ProjectSiteComponent implements OnInit {
       next: () => finish(),
       error: (err) => {
         console.error('Save project error:', err);
+        this.notifyError(err, 'Gagal menyimpan project.');
         finish();
       }
     });
@@ -112,14 +114,17 @@ export class ProjectSiteComponent implements OnInit {
 
   deleteProject(proj: any) {
     this.requestDelete(`Yakin ingin menghapus project ${proj.name}?`, () => {
-      this.projectService.deleteProject(proj._id || proj.id).subscribe(() => {
-        this.projectService.refreshProjects();
-        if (this.selectedProject?._id === proj._id) {
-          this.selectedProject = null;
-          this.selectedSite = null;
-          this.selectedGedung = null;
-        }
-        this.cdr.detectChanges();
+      this.projectService.deleteProject(proj._id || proj.id).subscribe({
+        next: () => {
+          this.projectService.refreshProjects();
+          if (this.selectedProject?._id === proj._id) {
+            this.selectedProject = null;
+            this.selectedSite = null;
+            this.selectedGedung = null;
+          }
+          this.cdr.detectChanges();
+        },
+        error: (err) => this.notifyError(err, 'Gagal menghapus project.')
       });
     });
   }
@@ -155,7 +160,7 @@ export class ProjectSiteComponent implements OnInit {
     };
     this.projectService.updateProject(this.selectedProject._id || this.selectedProject.id, { sites }).subscribe({
       next: () => finish(),
-      error: () => finish()
+      error: (err) => { this.notifyError(err, 'Gagal menyimpan perubahan.'); finish(); }
     });
     setTimeout(() => this.ngZone.run(() => finish()), 2000);
   }
@@ -176,7 +181,7 @@ export class ProjectSiteComponent implements OnInit {
       };
       this.projectService.updateProject(this.selectedProject._id || this.selectedProject.id, { sites }).subscribe({
         next: () => finish(),
-        error: () => finish()
+        error: (err) => { this.notifyError(err, 'Gagal menghapus.'); finish(); }
       });
       setTimeout(() => this.ngZone.run(() => finish()), 2000);
     });
@@ -218,7 +223,7 @@ export class ProjectSiteComponent implements OnInit {
     };
     this.projectService.updateProject(this.selectedProject._id || this.selectedProject.id, { sites }).subscribe({
       next: () => finish(),
-      error: () => finish()
+      error: (err) => { this.notifyError(err, 'Gagal menyimpan perubahan.'); finish(); }
     });
     setTimeout(() => this.ngZone.run(() => finish()), 2000);
   }
@@ -240,7 +245,7 @@ export class ProjectSiteComponent implements OnInit {
       };
       this.projectService.updateProject(this.selectedProject._id || this.selectedProject.id, { sites }).subscribe({
         next: () => finish(),
-        error: () => finish()
+        error: (err) => { this.notifyError(err, 'Gagal menghapus.'); finish(); }
       });
       setTimeout(() => this.ngZone.run(() => finish()), 2000);
     });
@@ -277,7 +282,7 @@ export class ProjectSiteComponent implements OnInit {
     };
     this.projectService.updateProject(this.selectedProject._id || this.selectedProject.id, { sites }).subscribe({
       next: () => finish(),
-      error: () => finish()
+      error: (err) => { this.notifyError(err, 'Gagal menyimpan perubahan.'); finish(); }
     });
     setTimeout(() => this.ngZone.run(() => finish()), 2000);
   }
@@ -297,7 +302,7 @@ export class ProjectSiteComponent implements OnInit {
       };
       this.projectService.updateProject(this.selectedProject._id || this.selectedProject.id, { sites }).subscribe({
         next: () => finish(),
-        error: () => finish()
+        error: (err) => { this.notifyError(err, 'Gagal menghapus.'); finish(); }
       });
       setTimeout(() => this.ngZone.run(() => finish()), 2000);
     });
@@ -308,6 +313,19 @@ export class ProjectSiteComponent implements OnInit {
     this.confirmMessage = message;
     this.confirmAction = action;
     this.showConfirmModal = true;
+  }
+
+  /** Tampilkan kegagalan simpan/hapus agar aksi tidak terlihat berhasil diam-diam. */
+  private notifyError(err: any, fallback: string) {
+    const message = err?.status === 403
+      ? 'Akses ditolak. Aksi ini hanya untuk role EOS.'
+      : fallback;
+    Swal.fire({
+      icon: 'error',
+      title: 'Gagal',
+      text: message,
+      confirmButtonColor: '#3b82f6'
+    });
   }
 
   confirmDelete() {

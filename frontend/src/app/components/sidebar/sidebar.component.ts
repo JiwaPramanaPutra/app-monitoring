@@ -1,6 +1,7 @@
 import { Component } from '@angular/core';
 import { Router, RouterModule } from '@angular/router';
 import { CommonModule } from '@angular/common';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-sidebar',
@@ -16,19 +17,34 @@ export class SidebarComponent {
     initials: 'P'
   };
 
-  constructor(private router: Router) {
-    const saved = localStorage.getItem('currentUser');
-    if (saved) {
-      this.currentUser = JSON.parse(saved);
+  constructor(private router: Router, private auth: AuthService) {
+    const user = this.auth.user;
+    if (user) {
+      this.currentUser = {
+        name: user.name,
+        role: user.role,
+        initials: this.initialsOf(user.name)
+      };
     }
   }
 
   get isClient(): boolean {
-    return this.currentUser.role === 'Client';
+    return this.auth.isClient;
   }
 
   logout() {
-    localStorage.removeItem('currentUser');
+    this.auth.logout();
     this.router.navigate(['/login']);
+  }
+
+  private initialsOf(name: string): string {
+    const initials = (name || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(part => part[0])
+      .join('')
+      .substring(0, 2)
+      .toUpperCase();
+    return initials || 'P';
   }
 }

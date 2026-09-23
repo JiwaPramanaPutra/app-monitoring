@@ -5,6 +5,8 @@ import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 import { ProjectService } from '../../services/project.service';
+import { ApiService } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
 
 export interface MonitoringDevice {
   _id?: string;
@@ -125,7 +127,9 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     private router: Router,
     private route: ActivatedRoute,
     private cdr: ChangeDetectorRef,
-    private projectService: ProjectService
+    private projectService: ProjectService,
+    private api: ApiService,
+    private auth: AuthService
   ) {}
 
   ngOnInit() {
@@ -182,7 +186,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   async initDevices() {
     try {
       const site = encodeURIComponent(this.selectedSite);
-      const res = await fetch(`/api/devices/status?site=${site}`);
+      const res = await this.api.fetch(`/api/devices/status?site=${site}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.devices) {
@@ -193,7 +197,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       }
     } catch (e) { /* fallback below */ }
     try {
-      const fallback = await fetch('/api/devices');
+      const fallback = await this.api.fetch('/api/devices');
       if (fallback.ok) {
         const data = await fallback.json();
         if (data && data.devices) this.devices = data.devices;
@@ -214,7 +218,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     if (this.devices.length === 0) return;
     try {
       const site = encodeURIComponent(this.selectedSite);
-      const res = await fetch(`/api/devices/status?site=${site}`);
+      const res = await this.api.fetch(`/api/devices/status?site=${site}`);
       if (!res.ok) return;
       const data = await res.json();
       if (data && data.devices) {
@@ -233,7 +237,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   fetchRouterTraffic() {
-    fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+    this.api.fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
       .then(res => res.json())
       .then(data => {
         // Hanya proses traffic jika site memang terkonfigurasi pada backend
@@ -388,13 +392,11 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   get isClient(): boolean {
-    const saved = localStorage.getItem('currentUser');
-    return saved ? JSON.parse(saved).role === 'Client' : true;
+    return this.auth.isClient;
   }
 
   get currentRole(): string {
-    const saved = localStorage.getItem('currentUser');
-    return saved ? JSON.parse(saved).role : 'Client';
+    return this.auth.user?.role || 'Client';
   }
 
   get filteredDevices(): MonitoringDevice[] {
@@ -526,7 +528,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const dev = this.rebootTargetDevice;
 
     // Panggil Backend Reboot API (Mendukung SSH & HTTP Web API TP-Link)
-    fetch('/api/device/reboot', {
+    this.api.fetch('/api/device/reboot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -567,7 +569,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
           this.rebootPollTimer = setInterval(async () => {
             pollCount++;
             try {
-              const pingRes = await fetch('/api/ping-all', {
+              const pingRes = await this.api.fetch('/api/ping-all', {
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ hosts: [dev.ip] })
               });
@@ -638,7 +640,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     const devId = this.editingDevice._id || this.editingDevice.id;
 
     try {
-      const res = await fetch(`/api/devices/${devId}`, {
+      const res = await this.api.fetch(`/api/devices/${devId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(this.editingDevice)
@@ -686,7 +688,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.pingStatus = 'pinging';
     this.pingResultInfo = '';
 
-    fetch('/api/ping', {
+    this.api.fetch('/api/ping', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ host: this.managementTargetDevice.ip })
@@ -748,7 +750,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
     // Kirim request DELETE ke backend
     try {
-      await fetch(`/api/devices/${devIdentifier}`, {
+      await this.api.fetch(`/api/devices/${devIdentifier}`, {
         method: 'DELETE'
       });
     } catch (e) {
@@ -836,7 +838,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
     // Kirim request POST ke backend agar tersimpan permanen
     try {
-      const res = await fetch('/api/devices', {
+      const res = await this.api.fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(deviceToAdd)

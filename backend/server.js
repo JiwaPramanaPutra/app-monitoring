@@ -14,6 +14,9 @@ const Device = require('./models/Device');
 const Project = require('./models/Project');
 const Laporan = require('./models/Laporan');
 const { sendTelegramAlert } = require('./services/telegram');
+const auth = require('./services/auth');
+const { stripDeviceSecrets, stripProjectSecrets, preserveRouterPasswords } = require('./services/redact');
+const { normalizeNestedIds } = require('./services/project-utils');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +33,12 @@ if (MONGO_URI && !MONGO_URI.includes('YOUR_PASSWORD_HERE')) {
 
 app.use(cors());
 app.use(express.json());
+
+// Auth fail-closed: server tidak jalan tanpa konfigurasi auth lengkap,
+// dan semua endpoint /api selain health + login wajib token.
+auth.assertAuthConfig();
+app.use('/api', auth.requireAuth);
+app.use('/api', auth.requireEosForMutations);
 
 // Konfigurasi router default dari environment (opsional).
 // Dipakai hanya sebagai fallback untuk request tanpa site ber-routerConfig.
@@ -178,6 +187,33 @@ app.get('/api/health', (req, res) => {
         success: true,
         message: 'Nadi Monitoring Backend is running with Live MikroTik RB450Gx4 Integration'
     });
+});
+
+/**
+ * Endpoint: Login - menukar kredensial environment dengan JWT.
+ */
+app.post('/api/auth/login', (req, res) => {
+    const { username, password } = req.body || {};
+    if (!username || !password) {
+        return res.status(400).json({ success: false, error: 'Username dan password wajib diisi.' });
+    }
+
+    const key = `${req.ip}:${username}`;
+    const throttle = auth.checkLoginThrottle(key);
+    if (!throttle.allowed) {
+        return res.status(429).json({
+            success: false,
+            error: `Terlalu banyak percobaan login. Coba lagi dalam ${throttle.retryAfterSec} detik.`
+        });
+    }
+
+    const user = auth.authenticate(username, password);
+    if (!user) {
+        return res.status(401).json({ success: false, error: 'Nama pengguna atau kata sandi salah.' });
+    }
+
+    auth.clearLoginThrottle(key);
+    res.json({ success: true, token: auth.signToken(user), user });
 });
 
 /**
@@ -831,7 +867,7 @@ app.get('/api/devices/status', async (req, res) => {
             let client = 'N/A';
             let signal = 'N/A';
 
-            return { ...d, status, pingTime, client, signal };
+            return stripDeviceSecrets({ ...d, status, pingTime, client, signal });
         });
 
         res.json({ success: true, count: enriched.length, devices: enriched, source: 'ping' });
@@ -881,10 +917,10 @@ app.get('/api/projects', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
             const projects = await Project.find({}).lean();
-            return res.json({ success: true, projects });
+            return res.json({ success: true, projects: projects.map(stripProjectSecrets) });
         } else {
             const projects = storage.getLocalProjects();
-            return res.json({ success: true, projects });
+            return res.json({ success: true, projects: projects.map(stripProjectSecrets) });
         }
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -930,10 +966,10 @@ app.post('/api/projects', async (req, res) => {
         if (mongoose.connection.readyState === 1) {
             const newProject = new Project(req.body);
             await newProject.save();
-            return res.json({ success: true, project: newProject });
+            return res.json({ success: true, project: stripProjectSecrets(newProject.toObject()) });
         } else {
             const newProject = storage.saveLocalProject(req.body);
-            return res.json({ success: true, project: newProject });
+            return res.json({ success: true, project: stripProjectSecrets(newProject) });
         }
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -943,11 +979,19 @@ app.post('/api/projects', async (req, res) => {
 app.put('/api/projects/:id', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
-            const updated = await Project.findByIdAndUpdate(req.params.id, req.body, { new: true });
-            return res.json({ success: true, project: updated });
+            const existing = await Project.findById(req.params.id).lean();
+            const payload = preserveRouterPasswords(req.body, existing);
+            normalizeNestedIds(payload, 'mongo');
+            const updated = await Project.findByIdAndUpdate(req.params.id, payload, { new: true });
+            return res.json({ success: true, project: stripProjectSecrets(updated.toObject()) });
         } else {
-            const updated = storage.updateLocalProject(req.params.id, req.body);
-            return res.json({ success: true, project: updated });
+            const existing = storage.getLocalProjects().find(
+                p => String(p._id) === String(req.params.id) || String(p.id) === String(req.params.id)
+            );
+            const payload = preserveRouterPasswords(req.body, existing);
+            normalizeNestedIds(payload, 'local');
+            const updated = storage.updateLocalProject(req.params.id, payload);
+            return res.json({ success: true, project: stripProjectSecrets(updated) });
         }
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -975,10 +1019,10 @@ app.get('/api/devices', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
             const devices = await Device.find({}).sort({ createdAt: -1 }).lean();
-            return res.json({ success: true, count: devices.length, devices, source: 'mongodb' });
+            return res.json({ success: true, count: devices.length, devices: devices.map(stripDeviceSecrets), source: 'mongodb' });
         } else {
             const devices = storage.getLocalDevices();
-            return res.json({ success: true, count: devices.length, devices, source: 'local' });
+            return res.json({ success: true, count: devices.length, devices: devices.map(stripDeviceSecrets), source: 'local' });
         }
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -995,7 +1039,7 @@ app.post('/api/devices', async (req, res) => {
             storage.saveLocalDevice(req.body);
             newDevice = req.body;
         }
-        res.json({ success: true, message: 'Device added', device: newDevice });
+        res.json({ success: true, message: 'Device added', device: stripDeviceSecrets(newDevice.toObject ? newDevice.toObject() : newDevice) });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
@@ -1009,7 +1053,7 @@ app.put('/api/devices/:id', async (req, res) => {
         } else {
             updatedDevice = storage.updateLocalDevice(req.params.id, req.body);
         }
-        res.json({ success: true, message: 'Device updated', device: updatedDevice });
+        res.json({ success: true, message: 'Device updated', device: stripDeviceSecrets(updatedDevice && updatedDevice.toObject ? updatedDevice.toObject() : updatedDevice) });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

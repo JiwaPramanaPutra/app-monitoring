@@ -1,6 +1,6 @@
 # NEXUS (Nadi) - Project Overview
 
-<!-- blueprint:source-hash 99c73b7d98637217cf89ce840ac237677a87e89e2cfcbe429408629b21433fb1 -->
+<!-- blueprint:source-hash 81df0e550eec49e5f14dc95ab5f3d0504b41b0fe3535c053b74a5d60053ebda5 -->
 
 > Sistem monitoring jaringan & infrastruktur terpusat multi-site, open source & self-hosted: trafik router real-time, status perangkat, dan laporan pemeliharaan.
 
@@ -65,9 +65,10 @@ Backlog (bukan MVP): AI troubleshooting - AI membaca struktur dan konfigurasi ja
 - Tiap site punya gedung -> lantai -> ruangan; dipakai Device, Laporan, dan akses User
 - Konfigurasi router per site (host, port, interface) untuk fitur 2
 
-### User
+### User (v1)
 
-- `name`, `role` (EOS / Client), `siteAccess` (site tertentu atau semua site), `lastLogin`
+- Akun dari environment: `ADMIN_USERNAME`/`ADMIN_PASSWORD` (role EOS) wajib; `VIEWER_USERNAME`/`VIEWER_PASSWORD` opsional (role Client)
+- Penyimpanan user, `siteAccess`, dan `lastLogin` menyusul post-v1
 
 ### AuditLog
 
@@ -98,7 +99,6 @@ Dashboard terpusat: widget trafik real-time, tabel perangkat dengan status warna
 - `/laporan-trafik` - grafik historis TX/RX dan export
 - `/laporan` - tabel dan input laporan gangguan
 - `/project-site` - pengelolaan project dan hierarki site
-- `/pengguna` - manajemen pengguna dan log aktivitas (EOS)
 
 ## Deployment
 

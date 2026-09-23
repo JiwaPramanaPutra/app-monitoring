@@ -5,6 +5,8 @@ import { RouterModule } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 import { ProjectService } from '../../services/project.service';
+import { ApiService } from '../../services/api.service';
+import { AuthService } from '../../services/auth.service';
 import Swal from 'sweetalert2';
 
 @Component({
@@ -15,7 +17,12 @@ import Swal from 'sweetalert2';
   styleUrls: ['./laporan.component.css']
 })
 export class LaporanComponent implements OnInit {
-  constructor(private cdr: ChangeDetectorRef, private projectService: ProjectService) {}
+  constructor(
+    private cdr: ChangeDetectorRef,
+    private projectService: ProjectService,
+    private api: ApiService,
+    private auth: AuthService
+  ) {}
 
   searchText = '';
   filterType = '';
@@ -29,20 +36,11 @@ export class LaporanComponent implements OnInit {
   sites: string[] = [];
 
   get isClient(): boolean {
-    try {
-      const saved = localStorage.getItem('currentUser');
-      return saved ? JSON.parse(saved).role === 'Client' : true;
-    } catch { return true; }
+    return this.auth.isClient;
   }
 
   get currentUser(): string {
-    try {
-      const saved = localStorage.getItem('currentUser');
-      if (!saved) return 'Admin';
-      const user = JSON.parse(saved);
-      // field bisa 'name' atau 'username' tergantung versi login
-      return user.name || user.username || user.email || 'Admin';
-    } catch { return 'Admin'; }
+    return this.auth.user?.name || this.auth.user?.username || 'Admin';
   }
 
   newReport: any = {
@@ -73,7 +71,7 @@ export class LaporanComponent implements OnInit {
 
   async loadAllDevices() {
     try {
-      const res = await fetch('/api/devices');
+      const res = await this.api.fetch('/api/devices');
       const result = await res.json();
       if (result.success) {
         this.allDevices = result.devices || [];
@@ -111,7 +109,7 @@ export class LaporanComponent implements OnInit {
       if (this.searchText) params.append('search', this.searchText);
       if (this.filterType) params.append('type', this.filterType);
 
-      const res = await fetch(`/api/laporan?${params.toString()}`);
+      const res = await this.api.fetch(`/api/laporan?${params.toString()}`);
       const result = await res.json();
       if (result.success) {
         this.reports = result.data;
@@ -189,7 +187,7 @@ export class LaporanComponent implements OnInit {
 
       const method = this.isEditing ? 'PUT' : 'POST';
 
-      const res = await fetch(url, {
+      const res = await this.api.fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -241,7 +239,7 @@ export class LaporanComponent implements OnInit {
     if (!confirmResult.isConfirmed) return;
 
     try {
-      const res = await fetch(`/api/laporan/${id}`, {
+      const res = await this.api.fetch(`/api/laporan/${id}`, {
         method: 'DELETE'
       });
       const result = await res.json();
@@ -273,10 +271,19 @@ export class LaporanComponent implements OnInit {
     }
   }
 
-  exportCSV() {
+  async exportCSV() {
     const params = new URLSearchParams();
     if (this.searchText) params.append('search', this.searchText);
     if (this.filterType) params.append('type', this.filterType);
-    window.open(`/api/laporan/export/csv?${params.toString()}`, '_blank');
+    try {
+      await this.api.download(`/api/laporan/export/csv?${params.toString()}`);
+    } catch (err: any) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: err?.message || 'Gagal mengunduh file.',
+        confirmButtonColor: '#3b82f6'
+      });
+    }
   }
 }

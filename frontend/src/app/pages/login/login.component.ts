@@ -2,12 +2,7 @@ import { Component } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-
-// Login mock sementara — digantikan auth backend (JWT) pada fitur berikutnya.
-const DUMMY_USERS: Record<string, { name: string; role: 'EOS' | 'Client'; initials: string; pass: string }> = {
-  'admin': { name: 'Administrator', role: 'EOS', initials: 'AD', pass: 'admin' },
-  'client': { name: 'Viewer', role: 'Client', initials: 'VW', pass: 'client' }
-};
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-login',
@@ -20,19 +15,22 @@ export class LoginComponent {
   username = '';
   password = '';
   errorMsg = '';
+  isLoading = false;
 
-  constructor(private router: Router) {}
+  constructor(private router: Router, private auth: AuthService) {}
 
-  onLogin() {
-    if (!this.username || !this.password) return;
+  async onLogin() {
+    if (!this.username || !this.password || this.isLoading) return;
 
-    const user = DUMMY_USERS[this.username.toLowerCase()];
-    if (user && this.password === user.pass) {
-      // Simpan info user ke localStorage
-      localStorage.setItem('currentUser', JSON.stringify(user));
+    this.isLoading = true;
+    this.errorMsg = '';
+    try {
+      await this.auth.login(this.username, this.password);
       this.router.navigate(['/dashboard']);
-    } else {
-      this.errorMsg = 'Nama pengguna atau kata sandi salah.';
+    } catch (err: any) {
+      this.errorMsg = err?.message || 'Gagal masuk. Coba lagi.';
+    } finally {
+      this.isLoading = false;
     }
   }
 }

@@ -5,6 +5,8 @@ import { Router, RouterModule, ActivatedRoute } from '@angular/router';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 import { ProjectService } from '../../services/project.service';
+import { ApiService } from '../../services/api.service';
+import Swal from 'sweetalert2';
 
 interface TrafficData {
   label: string;
@@ -101,7 +103,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     private router: Router,
     private route: ActivatedRoute,
     private cdr: ChangeDetectorRef,
-    private projectService: ProjectService
+    private projectService: ProjectService,
+    private api: ApiService
   ) {}
 
   ngOnInit() {
@@ -176,7 +179,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   fetchRealHistoryAndEvents() {
     // 1. Fetch downtime events from backend
-    fetch(`/api/router/downtime-events?site=${encodeURIComponent(this.selectedSite)}`)
+    this.api.fetch(`/api/router/downtime-events?site=${encodeURIComponent(this.selectedSite)}`)
       .then(res => res.json())
       .then(res => {
         if (res && res.success && Array.isArray(res.events)) {
@@ -207,7 +210,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     if (this.startDate) params.set('startDate', this.startDate);
     if (this.endDate) params.set('endDate', this.endDate);
 
-    fetch(`/api/router/history?${params.toString()}`)
+    this.api.fetch(`/api/router/history?${params.toString()}`)
       .then(res => res.json())
       .then(res => {
         if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
@@ -245,7 +248,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  exportData(format: 'json' | 'csv' = 'csv') {
+  async exportData(format: 'json' | 'csv' = 'csv') {
     const params = new URLSearchParams({
       site: this.selectedSite,
       period: this.selectedPeriod,
@@ -254,12 +257,21 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     if (this.startDate) params.set('startDate', this.startDate);
     if (this.endDate) params.set('endDate', this.endDate);
 
-    window.open(`/api/router/history/export?${params.toString()}`, '_blank');
+    try {
+      await this.api.download(`/api/router/history/export?${params.toString()}`);
+    } catch (err: any) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Gagal',
+        text: err?.message || 'Gagal mengunduh file.',
+        confirmButtonColor: '#3b82f6'
+      });
+    }
   }
 
 
   fetchLiveTraffic() {
-    fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+    this.api.fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
       .then(res => res.json())
       .then(data => {
         if (data && data.siteConfigured && data.connected && typeof data.txMbps === 'number') {
@@ -467,7 +479,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       let lastRecover = '—';
 
       try {
-        const res = await fetch(`/api/router/downtime-events?site=${encodeURIComponent(site)}`);
+        const res = await this.api.fetch(`/api/router/downtime-events?site=${encodeURIComponent(site)}`);
         if (res.ok) {
           const data = await res.json();
           const events: any[] = data.events || [];
