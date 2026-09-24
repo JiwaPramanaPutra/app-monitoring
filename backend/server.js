@@ -17,6 +17,7 @@ const { sendTelegramAlert } = require('./services/telegram');
 const auth = require('./services/auth');
 const { stripDeviceSecrets, stripProjectSecrets, preserveRouterPasswords } = require('./services/redact');
 const { normalizeNestedIds } = require('./services/project-utils');
+const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1076,26 +1077,7 @@ app.delete('/api/devices/:id', async (req, res) => {
 // CRUD ENDPOINTS FOR LAPORAN
 // =========================================================
 
-// Filter laporan dipakai oleh GET /api/laporan dan export CSV.
-function filterLaporan(laporans, search, type) {
-    let result = laporans || [];
-    if (type) result = result.filter(l => l.type === type);
-    if (search) {
-        const q = String(search).toLowerCase();
-        result = result.filter(l =>
-            String(l.masalah || '').toLowerCase().includes(q) ||
-            String(l.tindakan || '').toLowerCase().includes(q)
-        );
-    }
-    return result;
-}
-
-function csvCell(value) {
-    let s = value === null || value === undefined ? '' : String(value);
-    // Netralkan formula injection saat CSV dibuka di Excel/Sheets.
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-    return '"' + s.replace(/"/g, '""') + '"';
-}
+// Filter laporan dan pembentukan CSV ada di services/laporan-utils.js (mudah dites).
 
 async function getAllLaporan() {
     if (mongoose.connection.readyState === 1) {
@@ -1123,18 +1105,12 @@ app.get('/api/laporan/export/csv', async (req, res) => {
         const laporans = await getAllLaporan();
         const filtered = filterLaporan(laporans, req.query.search, req.query.type);
 
-        const lines = ['Tanggal,Jenis,Site,Gedung,Lantai,Ruangan,Perangkat,Masalah,Tindakan,Teknisi'];
-        for (const l of filtered) {
-            lines.push([
-                l.date, l.type, l.site, l.gedung, l.lantai, l.ruangan,
-                l.perangkatTerkait, l.masalah, l.tindakan, l.technician
-            ].map(csvCell).join(','));
-        }
+        const csv = buildLaporanCsv(filtered);
 
         const filename = `laporan_${new Date().toISOString().split('T')[0]}.csv`;
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        return res.send('\uFEFF' + lines.join('\r\n'));
+        return res.send('\uFEFF' + csv);
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

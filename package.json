@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "verify": "npm --prefix frontend run verify"
+    "verify": "npm --prefix backend test && npm --prefix frontend run verify"
   }
 }

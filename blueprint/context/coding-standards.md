@@ -29,5 +29,6 @@ Follow these conventions for all code changes.
 - Manage styling with standard CSS/Tailwind (as per current project setup).
 
 ## Testing
-- Unit testing is available on the frontend using Vitest (`npm test` in the `frontend` directory).
+- Frontend: Vitest (`npm test` in `frontend/`).
+- Backend: Node's built-in test runner (`npm test` in `backend/`, files in `backend/test/`).
 - Write tests for core business logic when applicable.

@@ -297,6 +297,7 @@ This project consists of an Angular frontend and a Node.js backend.
 Backend commands (in `backend/`):
 - Dev server: `npm run dev`
 - Production server: `npm run start`
+- Test: `npm test` (Node built-in test runner, files in `backend/test/`)
 
 Frontend commands (in `frontend/`):
 - Dev server: `npm start` (http://localhost:4200)
@@ -304,13 +305,14 @@ Frontend commands (in `frontend/`):
 - Test: `npm test`
 
 Project-wide:
-- Verify: `npm run verify` (frontend tests + build)
+- Verify: `npm run verify` (backend + frontend tests, frontend build)
 
-Testing is opt-in. If this project does not already have a unit test runner, run
-`/tests` or `$tests` to add one and update this section with the real test
-commands.
+Unit testing is configured on both sides: frontend with Vitest (`npm test` in
+`frontend/`) and backend with Node's built-in test runner (`npm test` in
+`backend/`). The project-wide `Verify` command runs both plus the frontend
+build.
 
-Browser testing is also opt-in. Run `/tests browser` or `$tests browser` to add
+Browser testing remains opt-in. Run `/tests browser` or `$tests browser` to add
 or normalize a browser harness and document its exact command as `Browser
 tests`. Check and Continuous Mode can then reuse it without installing tooling
 mid-feature.
