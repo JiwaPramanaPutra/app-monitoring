@@ -1,4 +1,5 @@
 import {
+  ChangeDetectorRef,
   Component,
   EventEmitter,
   HostListener,
@@ -33,11 +34,12 @@ export class SiteDropdownComponent implements OnInit {
   /** Stack index yang sedang hover untuk multi-level submenu */
   activeParentPath: number[] = [];
 
-  constructor(private projectService: ProjectService) {}
+  constructor(private projectService: ProjectService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     this.projectService.siteTree$.subscribe(tree => {
       this.hierarchy = tree || [];
+      this.cdr.markForCheck();
     });
   }
 

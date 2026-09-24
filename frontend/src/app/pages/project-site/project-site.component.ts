@@ -52,6 +52,8 @@ export class ProjectSiteComponent implements OnInit {
           }
         }
       }
+      // App berjalan zoneless: beri tahu Angular agar daftar langsung ter-render.
+      this.cdr.markForCheck();
     });
     // Force fresh load every time the page is opened
     this.projectService.refreshProjects();

@@ -63,6 +63,8 @@ export class LaporanComponent implements OnInit {
         this.newReport.site = this.sites[0];
         this.filterDevicesBySite(this.newReport.site);
       }
+      // App berjalan zoneless: beri tahu Angular agar pilihan site langsung ter-render.
+      this.cdr.markForCheck();
     });
 
     this.loadReports();
