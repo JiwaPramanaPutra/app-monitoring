@@ -1,0 +1,46 @@
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env
+    environment:
+      # Default: MongoDB bawaan compose. Ganti dengan mengeset MONGO_URI
+      # di environment shell atau file .env di root project.
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/nadi}
+    volumes:
+      # Penyimpanan JSON lokal (dipakai bila MONGO_URI kosong) tetap persisten.
+      - ./backend/data:/app/data
+    depends_on:
+      mongo:
+        # Tunggu MongoDB benar-benar siap sebelum backend start,
+        # agar koneksi pertama tidak jatuh ke mode JSON.
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    expose:
+      - "3000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:

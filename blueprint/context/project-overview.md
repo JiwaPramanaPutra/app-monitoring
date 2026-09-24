@@ -1,6 +1,6 @@
 # NEXUS (Nadi) - Project Overview
 
-<!-- blueprint:source-hash 28c23ef82a3c33168a7d9e51beeb138b63d469623fa83c756a1053627bfd4fda -->
+<!-- blueprint:source-hash dac2eb4b89ae9fb9486baa80df1228df0ca3f996352432251d0c1721a78b8906 -->
 
 > Sistem monitoring jaringan & infrastruktur terpusat multi-site, open source & self-hosted: trafik router real-time, status perangkat, dan laporan pemeliharaan.
 
@@ -61,7 +61,7 @@ Backlog (bukan MVP): remote reboot perangkat (SSH/HTTP); AI troubleshooting - AI
 
 ### Site (hierarki lokasi)
 
-- `name` site: Direktorat, Gigi, Keperawatan, Gizi, Kebidanan
+- Site adalah record di koleksi Project; instance baru mulai kosong dan site dibuat lewat halaman Project & Site
 - Tiap site punya gedung -> lantai -> ruangan; dipakai Device, Laporan, dan akses User
 - Konfigurasi router per site (host, port, interface) untuk fitur 2
 
@@ -82,7 +82,7 @@ Backlog (bukan MVP): remote reboot perangkat (SSH/HTTP); AI troubleshooting - AI
 - **Backend:** Node.js + Express.js - REST API, polling, integrasi perangkat
 - **Database:** MongoDB (via Mongoose) - device, laporan, sampel trafik
 - **API:** REST API
-- **Network integration:** MikroTik RouterOS API (port 8728), ssh2 (reboot), ICMP ping
+- **Network integration:** MikroTik RouterOS API (port 8728), ICMP ping (remote reboot post-v1)
 - **Auth:** JWT
 
 ## Monetization

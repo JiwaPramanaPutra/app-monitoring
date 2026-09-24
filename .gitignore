@@ -39,6 +39,9 @@ Thumbs.db
 .env
 .env.*
 
+# Contoh env ikut masuk repo (pengecualian dari aturan .env.* di atas)
+!backend/.env.example
+
 # Runtime data (kredensial router/SSH, histori lokal)
 backend/data/
 

@@ -1,7 +1,7 @@
 # Project Plan
 
 ## 1. Problem - What problem are we solving?
-Memantau kondisi perangkat jaringan dan infrastruktur secara terpusat untuk mendeteksi anomali trafik, perangkat offline, dan mengelola laporan pemeliharaan di berbagai site (Direktorat, Gigi, Keperawatan, Gizi, Kebidanan).
+Memantau kondisi perangkat jaringan dan infrastruktur secara terpusat untuk mendeteksi anomali trafik, perangkat offline, dan mengelola laporan pemeliharaan di berbagai site.
 
 ## 2. Users - Who is this for?
 Sasaran publik: open source & self-hosted - organisasi mana pun yang mengelola jaringan multi-site bisa deploy instance sendiri.
@@ -34,7 +34,7 @@ Backlog (bukan MVP): AI troubleshooting - AI membaca struktur dan konfigurasi ja
 - **Backend:** Node.js + Express.js
 - **Database:** MongoDB (via Mongoose)
 - **API:** REST API
-- **Network Integration:** MikroTik RouterOS API (port 8728) / ssh2 / ping
+- **Network Integration:** MikroTik RouterOS API (port 8728) / ICMP ping
 - **Auth:** JWT
 
 ## 6. Monetize - How will this make money?
