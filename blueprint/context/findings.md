@@ -7,7 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-
 ### F-25 [P2] unverified - Restart-policy starts can still bypass Mongo readiness and silently use JSON storage
 
 **File:** docker-compose.yml:4,15,24-28; backend/server.js:27-33,73
@@ -286,13 +285,13 @@ Re-examined at target 55fe88f (2026-09-25, independent automatic review): the lo
 **Resolution:**
 
 
-### F-84 [P3] open - Backend keeps a second WIB offset constant beside the one the new module exports
+### F-84 [P3] fixed - Backend keeps a second WIB offset constant beside the one the new module exports
 
 **File:** backend/server.js:26,437-441; backend/services/traffic-range.js:16,96-103
 **Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** `traffic-range.js` defines `WIB_OFFSET_MS` and derives its `+07:00` suffix from it so that no second copy can drift (the module comment says two places claiming WIB is exactly how an hour disappears), and it exports the constant at `:98` - but `server.js` still declares its own `const WIB_OFFSET_MS = 7 * 60 * 60 * 1000` (`:437`) for `toWIB` (`:439-441`) and destructures only `SAMPLE_LIMIT, rangeBounds, capSamples, isFlagOn, mergeSamples` from the module (`:26`). Both copies are UTC+7 today, so there is no live defect; the drift risk is concrete because `toWIB`/`aggregateSamples` live in `server.js`, which no test imports, so changing only `server.js:437` back to 8 h would still pass `npm run verify` while shifting every `harian`/`tahunan` bucket label - the same class of bug as F-80.
 **Suggested fix:** Add `WIB_OFFSET_MS` to the destructure at `backend/server.js:26` and delete the literal at `:437`, so `toWIB` uses the single definition the backend tests already pin. No current requirement is lost.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25 on `fix/satu-konstanta-wib`. `toWIB` moved into `backend/services/traffic-range.js` and uses that module's `WIB_OFFSET_MS`; `server.js` imports it and its own `const WIB_OFFSET_MS` literal is gone. Grep evidence: no `60 * 60 * 1000` remains anywhere in `backend/server.js`, and `const WIB_OFFSET_MS` now appears exactly once in the whole backend, at `backend/services/traffic-range.js:16`. Four new tests in `backend/test/traffic-range.test.js` pin the conversion - `toWIB`'s UTC fields equal WIB for a daytime instant, the day rolls exactly at 00:00 WIB, `toWIB` agrees with the `rangeBounds` day boundary, and `toWIB(stamp) - stamp === WIB_OFFSET_MS` so a reintroduced second offset fails even when both copies hold the same value. Evidence that the tests bite: mutating the constant to 8 hours fails three of them (`WIB_OFFSET_MS adalah UTC+7, bukan UTC+8`, `toWIB menghasilkan kalender WIB`, `toWIB memindahkan hari tepat di tengah malam WIB`), while the duplication guard correctly still passes because both copies moved together. `npm run verify` green: 134/134 backend (from 130), 109/109 frontend, Angular build OK. Awaiting re-review.
 
 
 ### F-85 [P3] open - Displayed custom-range dates and the input cap still follow the browser calendar, and `applyQuickPreset` has no caller

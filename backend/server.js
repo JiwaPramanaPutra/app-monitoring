@@ -23,7 +23,7 @@ const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('.
 const { decideDowntimeAction, isIdleSample } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
-const { SAMPLE_LIMIT, rangeBounds, capSamples, isFlagOn, mergeSamples } = require('./services/traffic-range');
+const { SAMPLE_LIMIT, rangeBounds, toWIB, capSamples, isFlagOn, mergeSamples } = require('./services/traffic-range');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -434,11 +434,10 @@ app.post('/api/router/interfaces', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: Aggregasi samples ke format laporan per-periode (WIB = UTC+7)
 // ─────────────────────────────────────────────────────────────────────────────
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000; // UTC+7
 
-function toWIB(timestamp) {
-    return new Date(new Date(timestamp).getTime() + WIB_OFFSET_MS);
-}
+// Offset WIB dan `toWIB` ada di `services/traffic-range.js` — satu definisi
+// untuk seluruh backend, dan bisa diuji karena modul ini menyalakan HTTP server
+// saat di-require.
 
 function aggregateSamples(samples, period) {
     if (!samples || samples.length === 0) return [];

@@ -43,6 +43,18 @@ function rangeBounds(startDate, endDate) {
 }
 
 /**
+ * Geser sebuah instan ke "kalender WIB" supaya bagian `getUTC*`-nya adalah
+ * waktu WIB, bukan waktu mesin yang menjalankan backend.
+ *
+ * Inilah yang menentukan label bucket `harian` (jam) dan `tahunan` (bulan) di
+ * `aggregateSamples`, jadi offsetnya harus sama dengan `rangeBounds` — kalau
+ * tidak, sumbu X grafik tidak cocok dengan jam yang dihitung halaman.
+ */
+function toWIB(timestamp) {
+    return new Date(new Date(timestamp).getTime() + WIB_OFFSET_MS);
+}
+
+/**
  * Potong daftar sample ke `limit` baris pertama dan laporkan apakah ada yang dibuang.
  *
  * Pemanggil mengambil `limit + 1` baris supaya keputusannya berbasis bukti:
@@ -97,6 +109,7 @@ module.exports = {
     SAMPLE_LIMIT,
     WIB_OFFSET_MS,
     rangeBounds,
+    toWIB,
     capSamples,
     isFlagOn,
     mergeSamples

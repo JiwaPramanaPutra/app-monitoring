@@ -7,7 +7,8 @@ const {
     capSamples,
     isFlagOn,
     mergeSamples,
-    rangeBounds
+    rangeBounds,
+    toWIB
 } = require('../services/traffic-range');
 
 test('WIB_OFFSET_MS adalah UTC+7, bukan UTC+8', () => {
@@ -30,8 +31,7 @@ test('rangeBounds: hari terakhir mencakup sampai 23:59:59 WIB', () => {
     assert.equal(endMs.getTime() - startMs.getTime(), 24 * 60 * 60 * 1000 - 1000);
 });
 
-test('rangeBounds tanpa tanggal berarti tanpa batas', () => {
-    assert.deepEqual(rangeBounds(null, null), { startMs: null, endMs: null });
+test('rangeBounds tanpa tanggal berarti tanpa batas', () => {    assert.deepEqual(rangeBounds(null, null), { startMs: null, endMs: null });
 
     const partial = rangeBounds('2026-09-01', null);
     assert.equal(partial.startMs.toISOString(), '2026-08-31T17:00:00.000Z');
@@ -131,4 +131,51 @@ test('mergeSamples tidak mencampur site lain dan memakai site pemanggil sebagai 
 test('mergeSamples pada input kosong mengembalikan array kosong', () => {
     assert.deepEqual(mergeSamples(null, 'Gizi'), []);
     assert.deepEqual(mergeSamples([], 'Gizi'), []);
+});
+
+test('toWIB memakai konstanta modul ini, bukan offset yang ditulis ulang', () => {
+    // `server.js` dulu punya `WIB_OFFSET_MS` sendiri di samping konstanta ini,
+    // dan karena modul itu tidak bisa diimpor test, baris itu bisa kembali ke
+    // 8 jam tanpa ada yang protes sambil menggeser semua label bucket.
+    const stamp = Date.parse('2026-09-01T03:00:00.000Z');
+
+    assert.equal(toWIB(stamp).getTime() - stamp, WIB_OFFSET_MS);
+});
+
+test('toWIB menghasilkan kalender WIB, bukan waktu lokal mesin', () => {
+    // 2026-09-01T03:00:00Z = Selasa 10:00 WIB
+    const wib = toWIB('2026-09-01T03:00:00.000Z');
+
+    assert.equal(wib.getUTCFullYear(), 2026);
+    assert.equal(wib.getUTCMonth(), 8);
+    assert.equal(wib.getUTCDate(), 1);
+    assert.equal(wib.getUTCHours(), 10);
+});
+
+test('toWIB memindahkan hari tepat di tengah malam WIB', () => {
+    // 2026-09-01T16:59:59Z = 1 Sep 23:59:59 WIB - hari masih sama.
+    const sebelum = toWIB('2026-09-01T16:59:59.000Z');
+    assert.equal(sebelum.getUTCDate(), 1);
+    assert.equal(sebelum.getUTCHours(), 23);
+
+    // 2026-09-01T17:00:00Z = 2 Sep 00:00 WIB - hari berganti.
+    const tepat = toWIB('2026-09-01T17:00:00.000Z');
+    assert.equal(tepat.getUTCDate(), 2);
+    assert.equal(tepat.getUTCHours(), 0);
+
+    // 2026-09-01T23:00:00Z = 2 Sep 06:00 WIB.
+    const pagi = toWIB('2026-09-01T23:00:00.000Z');
+    assert.equal(pagi.getUTCDate(), 2);
+    assert.equal(pagi.getUTCHours(), 6);
+});
+
+test('toWIB cocok dengan batas hari yang dipakai rangeBounds', () => {
+    // Awal hari WIB 1 September menurut rangeBounds harus terbaca 1 Sep 00:00
+    // oleh toWIB - keduanya memakai offset yang sama.
+    const { startMs } = rangeBounds('2026-09-01', '2026-09-01');
+    const wib = toWIB(startMs);
+
+    assert.equal(wib.getUTCDate(), 1);
+    assert.equal(wib.getUTCHours(), 0);
+    assert.equal(wib.getUTCMinutes(), 0);
 });
