@@ -23,6 +23,7 @@ const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('.
 const { decideDowntimeAction, isIdleSample } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
+const { SAMPLE_LIMIT, rangeBounds, capSamples, isFlagOn, mergeSamples } = require('./services/traffic-range');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -553,17 +554,10 @@ function aggregateSamples(samples, period) {
 // Helper: Ambil raw samples dari MongoDB atau fallback ke JSON
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Batas jumlah sample Mongo yang dimuat sekali jalan. Diambil terbaru dulu
-// supaya yang terpotong adalah yang paling lama, bukan yang paling baru.
-const SAMPLE_LIMIT = 200000;
-
-/** Batas rentang dari tanggal `YYYY-MM-DD` (waktu WIB). Satu sumber untuk semua pembaca. */
-function rangeBounds(startDate, endDate) {
-    return {
-        startMs: startDate ? new Date(startDate + 'T00:00:00+07:00') : null,
-        endMs: endDate ? new Date(endDate + 'T23:59:59+07:00') : null
-    };
-}
+// Batas hari WIB (`rangeBounds`), keputusan batas jumlah sample (`capSamples`),
+// penjaga bendera query (`isFlagOn`), dan dedup dua sumber (`mergeSamples`) ada
+// di `services/traffic-range.js` — modul ini menyalakan HTTP server saat
+// di-require, jadi logika itu harus di luar sini agar bisa diuji.
 
 /** Query Mongo untuk satu site pada satu rentang. */
 function mongoSampleQuery(site, startMs, endMs) {
@@ -619,8 +613,8 @@ async function getRawSamples(site, startDate, endDate) {
 
             // Satu baris ekstra diambil supaya peringatan batas hanya muncul saat
             // benar-benar terpotong — riwayat yang pas SAMPLE_LIMIT bukan pemotongan.
-            if (docs.length > SAMPLE_LIMIT) {
-                docs.length = SAMPLE_LIMIT;
+            const { docs: capped, truncated } = capSamples(docs, SAMPLE_LIMIT);
+            if (truncated) {
                 console.warn(`[History] ${site}: batas ${SAMPLE_LIMIT} sample tercapai, sisanya tidak dimuat.`);
             }
 
@@ -628,7 +622,7 @@ async function getRawSamples(site, startDate, endDate) {
             // RangeError di atas ~131k elemen, dan karena ini berada di dalam
             // `try`, error itu tertangkap sebagai "MongoDB gagal" sehingga sumber
             // Mongo hilang diam-diam — persis pemotongan yang ingin dihilangkan.
-            for (let i = docs.length - 1; i >= 0; i--) collected.push(docs[i]);
+            for (let i = capped.length - 1; i >= 0; i--) collected.push(capped[i]);
             sources.push('mongodb');
         } catch (e) {
             console.warn('MongoDB query failed, memakai JSON saja:', e.message);
@@ -645,18 +639,7 @@ async function getRawSamples(site, startDate, endDate) {
     // hanya sejak koneksinya hidup). Dulu fungsi ini memilih salah satu, dan
     // akibatnya grafik riwayat terpotong. Sekarang keduanya digabung, dengan
     // duplikat `site`+`timestamp` dibuang.
-    const seen = new Set();
-    const samples = collected.filter(s => {
-        if (!s || !s.timestamp) return false;
-        const stamp = new Date(s.timestamp);
-        if (isNaN(stamp.getTime())) return false;
-        const key = `${s.site || site}|${stamp.toISOString()}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    }).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-
-    return { source: sources.join('+'), samples };
+    return { source: sources.join('+'), samples: mergeSamples(collected, site) };
 }
 
 /**
@@ -680,8 +663,7 @@ app.get('/api/router/history', async (req, res) => {
     // Mode hitung: hanya menjawab "ada sample atau tidak" di rentang ini, tanpa
     // memuat riwayatnya. Dipakai tabel uptime, yang sebelumnya membaca SELURUH
     // riwayat per site hanya untuk satu angka.
-    const countOnly = req.query.count;
-    if (countOnly !== undefined && countOnly !== '0' && countOnly !== 'false') {
+    if (isFlagOn(req.query.count)) {
         try {
             const hasSamples = await hasSamplesInRange(site, startDate, endDate);
             return res.json({ success: true, site, count: true, hasSamples });
@@ -696,8 +678,7 @@ app.get('/api/router/history', async (req, res) => {
         // Mode raw: sample apa adanya, tanpa agregasi — `limit` sample terbaru
         // dalam urutan kronologis. Dipakai widget grafik supaya langsung terisi
         // dari riwayat saat site dipilih.
-        const raw = req.query.raw;
-        if (raw !== undefined && raw !== '0' && raw !== 'false') {
+        if (isFlagOn(req.query.raw)) {
             const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 45, 500));
             return res.json({
                 success: true,

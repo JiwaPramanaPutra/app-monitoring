@@ -8,6 +8,7 @@ import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import Swal from 'sweetalert2';
 import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, TooltipAlign } from '../../shared/chart-math';
+import { clipSeconds, currentSlot, overlapsWindow, periodWindow, PeriodWindow } from '../../shared/period-window';
 
 interface TrafficData {
   label: string;
@@ -406,9 +407,9 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   setDefaultDateRange() {
     if (this.selectedPeriod === 'custom') return;
 
-    const window = this.periodWindow();
-    this.startDate = window.startDate;
-    this.endDate = window.endDate;
+    const win = this.periodWindow();
+    this.startDate = win.startDate;
+    this.endDate = win.endDate;
   }
 
   formatDateForInput(date: Date): string {
@@ -470,72 +471,18 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   }
 
   /**
-   * Satu jendela periode untuk seluruh halaman — pemilihan event, probe sample,
-   * penyebut uptime, input tanggal, grafik, ekspor, dan log memakai batas yang
-   * sama supaya tidak bisa berbeda pendapat.
+   * Satu jendela periode untuk seluruh halaman.
    *
-   * Dihitung dari kalender **WIB** (Asia/Makassar, UTC+8), sama seperti endpoint
-   * riwayat yang menafsirkan `startDate`/`endDate` sebagai hari WIB. Memakai
-   * kalender browser membuat rentang kustom bergeser sehari di mesin non-WIB.
+   * Aritmetikanya ada di `shared/period-window.ts` — termasuk definisi WIB
+   * (UTC+7, bukan WITA/UTC+8) — supaya bisa diuji dan supaya ringkasan, log,
+   * probe, input tanggal, grafik, serta ekspor tidak bisa memakai batas berbeda.
    */
-  private periodWindow(): { start: Date; end: Date; startDate: string; endDate: string } {
-    const WIB_OFFSET_MS = 8 * 60 * 60 * 1000;
-    const DAY_MS = 24 * 60 * 60 * 1000;
-
-    const wibDayStart = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d) - WIB_OFFSET_MS);
-    const wibParts = (date: Date) => {
-      const shifted = new Date(date.getTime() + WIB_OFFSET_MS);
-      return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth(), d: shifted.getUTCDate() };
-    };
-    const iso = (date: Date) => {
-      const p = wibParts(date);
-      const pad = (n: number) => String(n).padStart(2, '0');
-      return `${p.y}-${pad(p.m + 1)}-${pad(p.d)}`;
-    };
-
-    const now = new Date();
-    const today = wibParts(now);
-    let startDay = wibDayStart(today.y, today.m, today.d);
-
-    switch (this.selectedPeriod) {
-      case 'harian':
-        break;
-      case 'mingguan':
-        // "7 hari terakhir" termasuk hari ini.
-        startDay = new Date(startDay.getTime() - 6 * DAY_MS);
-        break;
-      case 'bulanan':
-        // "30 hari terakhir" termasuk hari ini.
-        startDay = new Date(startDay.getTime() - 29 * DAY_MS);
-        break;
-      case 'tahunan':
-        // Labelnya "Tahun ini", jadi mulai 1 Januari tahun berjalan.
-        startDay = wibDayStart(today.y, 0, 1);
-        break;
-      case 'custom':
-        if (this.startDate && this.endDate) {
-          const [sy, sm, sd] = this.startDate.split('-').map(Number);
-          const [ey, em, ed] = this.endDate.split('-').map(Number);
-          const customStart = wibDayStart(sy, (sm || 1) - 1, sd || 1);
-          const customEndDay = wibDayStart(ey, (em || 1) - 1, ed || 1);
-          return {
-            start: customStart,
-            end: new Date(customEndDay.getTime() + DAY_MS - 1),
-            startDate: this.startDate,
-            endDate: this.endDate
-          };
-        }
-        startDay = new Date(startDay.getTime() - DAY_MS);
-        break;
-      default:
-        startDay = new Date(startDay.getTime() - DAY_MS);
-    }
-
-    return { start: startDay, end: now, startDate: iso(startDay), endDate: iso(now) };
+  private periodWindow(): PeriodWindow {
+    return periodWindow(this.selectedPeriod, new Date(), this.startDate, this.endDate);
   }
 
   async generateUptimeData() {
-    const window = this.periodWindow();
+    const win = this.periodWindow();
 
     // Fetch downtime events dari backend untuk semua site
     const results: UptimeData[] = [];
@@ -554,21 +501,19 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           const events: any[] = data.events || [];
 
           // Event yang TUMPANG TINDIH dengan jendela, bukan yang sekadar mulai di
-          // dalamnya. Sebelumnya ujung jendela tidak dibatasi sama sekali, jadi
-          // rentang kustom di masa lalu kehilangan gangguannya.
+          // dalamnya. Predikat dan pemotongan durasinya memakai fungsi yang SAMA
+          // dengan log downtime, jadi ringkasan dan log tidak bisa berbeda
+          // pendapat tentang event yang melewati batas jendela.
+          const nowMs = win.end.getTime();
           const relevantEvents = events.filter((e: any) => {
             const eventStart = new Date(e.start).getTime();
-            const eventEnd = e.end ? new Date(e.end).getTime() : window.end.getTime();
-            return eventEnd >= window.start.getTime() && eventStart <= window.end.getTime();
+            const eventEnd = e.end ? new Date(e.end).getTime() : nowMs;
+            return overlapsWindow(eventStart, eventEnd, win);
           });
 
           for (const ev of relevantEvents) {
             if (!ev.end) continue;
-            // Durasinya dipotong ke dalam jendela supaya gangguan yang melewati
-            // batas tidak dihitung penuh.
-            const from = Math.max(new Date(ev.start).getTime(), window.start.getTime());
-            const to = Math.min(new Date(ev.end).getTime(), window.end.getTime());
-            const seconds = (to - from) / 1000;
+            const seconds = clipSeconds(new Date(ev.start).getTime(), new Date(ev.end).getTime(), win);
             if (seconds <= 0) continue;
             // Kejadian tanpa `kind` adalah data lama (sebelum klasifikasi) dan
             // isinya kegagalan koneksi, jadi diperlakukan sebagai `unreachable`.
@@ -593,8 +538,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       // duplikatnya, lalu diurutkan hanya untuk satu angka.
       try {
         const params = new URLSearchParams({ site, count: '1' });
-        params.set('startDate', window.startDate);
-        params.set('endDate', window.endDate);
+        params.set('startDate', win.startDate);
+        params.set('endDate', win.endDate);
         const res = await this.api.fetch(`/api/router/history?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
@@ -604,7 +549,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         // Tanpa bukti -> uptime tidak diklaim.
       }
 
-      const totalPeriodSeconds = Math.max(0, (window.end.getTime() - window.start.getTime()) / 1000);
+      const totalPeriodSeconds = Math.max(0, (win.end.getTime() - win.start.getTime()) / 1000);
       // Uptime hanya diklaim kalau periode ini benar-benar terukur. Adanya
       // kejadian "tidak terpantau" justru berarti kita TIDAK mengukur, jadi itu
       // bukan dasar untuk mengklaim 100%.
@@ -651,24 +596,25 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   }
 
   filterDowntimeLog() {
-    const window = this.periodWindow();
+    const win = this.periodWindow();
 
     // Predikat yang SAMA dengan ringkasan uptime: event yang tumpang tindih
-    // dengan jendela. Menyaring berdasarkan waktu MULAI saja membuat gangguan
-    // yang melewati tengah malam menurunkan uptime tanpa muncul di log — dan
-    // event yang baru mulai di ujung jendela tampil dengan durasi nol.
+    // dengan jendela, lewat fungsi yang sama pula. Menyaring berdasarkan waktu
+    // MULAI saja membuat gangguan yang melewati tengah malam menurunkan uptime
+    // tanpa muncul di log — dan event yang baru mulai di ujung jendela tampil
+    // dengan durasi nol.
     this.downtimeLog = this.allDowntimeEvents
       .filter(event => event.site === this.selectedSite)
       .filter(event => {
         const start = event.timestamp.getTime();
-        const end = event.endTime ? new Date(event.endTime).getTime() : window.end.getTime();
-        return end >= window.start.getTime() && start <= window.end.getTime();
+        const end = event.endTime ? new Date(event.endTime).getTime() : win.end.getTime();
+        return overlapsWindow(start, end, win);
       })
       .map(event => {
         // Event yang belum pulih masih berdurasi '0s' dari backend. Tampilkan
         // berapa lama sudah berjalan sampai ujung jendela, bukan nol.
         if (event.endTime) return event;
-        const seconds = Math.max(0, (window.end.getTime() - event.timestamp.getTime()) / 1000);
+        const seconds = Math.max(0, (win.end.getTime() - event.timestamp.getTime()) / 1000);
         return { ...event, duration: this.formatDurationText(seconds) };
       })
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
@@ -689,22 +635,12 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
    * Dipakai bersama `lastIndexWithData`: yang lebih jauh di antara keduanya
    * menjadi batas hitung, sehingga jam/bulan yang belum lewat tetap dikecualikan
    * tanpa mengorbankan celah setelah sample terakhir.
+   *
+   * Zonanya ada di `shared/period-window.ts` (WIB, bukan WITA) — label yang
+   * dicocokkan diterbitkan backend dengan offset yang sama.
    */
   private currentSlotIndex(): number {
-    const now = new Date();
-    const tz = 'Asia/Makassar';
-
-    if (this.selectedPeriod === 'harian') {
-      const hour = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: tz }).format(now);
-      return this.chartLabels.findIndex(l => String(l).trim().startsWith(`${hour}:`));
-    }
-
-    if (this.selectedPeriod === 'tahunan') {
-      const month = new Intl.DateTimeFormat('en-GB', { month: 'short', timeZone: tz }).format(now);
-      return this.chartLabels.findIndex(l => String(l).trim().toLowerCase() === month.toLowerCase());
-    }
-
-    return -1;
+    return currentSlot(this.selectedPeriod, this.chartLabels, new Date());
   }
 
   /** Label sumbu Y pada `fraction` dari skala. Sumbu mengikuti `chartMaxValue`. */
