@@ -7,6 +7,7 @@ import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropd
 import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import Swal from 'sweetalert2';
+import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, TooltipAlign } from '../../shared/chart-math';
 
 interface TrafficData {
   label: string;
@@ -22,12 +23,12 @@ interface HoveredPoint {
   tx: number;
   rx: number;
   samples: number;
-  /** Posisi di viewBox SVG (x: 0-100, y: 0-150). */
-  left: number;
-  txY: number;
-  rxY: number;
-  /** Tooltip dibalik ke kiri saat titiknya di dekat tepi kanan. */
-  flip: boolean;
+  /** Posisi titik di dalam kotak grafik, dalam persen. */
+  leftPct: number;
+  txTopPct: number;
+  rxTopPct: number;
+  /** Perataan kotak tooltip terhadap titiknya. */
+  align: TooltipAlign;
 }
 
 interface UptimeData {
@@ -655,18 +656,41 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   /** Berapa titik grafik yang tidak punya sample sama sekali (jam yang datanya hilang). */
   get chartMissingBuckets(): number {
-    // Hanya sampai bucket terakhir yang PUNYA data: jam yang belum terjadi bukan
-    // "data hilang", dan dulu ikut terhitung sehingga hari yang terukur penuh
-    // tetap menampilkan beberapa titik hilang.
-    let lastWithData = -1;
-    this.chartData.forEach((d, i) => { if ((d.samples || 0) > 0) lastWithData = i; });
-    if (lastWithData === -1) return 0;
+    return countMissing(
+      this.chartData,
+      missingLimit(lastIndexWithData(this.chartData), this.currentSlotIndex())
+    );
+  }
 
-    let missing = 0;
-    for (let i = 0; i <= lastWithData; i++) {
-      if ((this.chartData[i].samples || 0) === 0) missing++;
+  /**
+   * Indeks slot yang mewakili "sekarang" pada periode aktif, atau -1 bila tidak
+   * bisa ditentukan (periode yang tidak punya slot waktu, mis. bulanan).
+   *
+   * Dipakai bersama `lastIndexWithData`: yang lebih jauh di antara keduanya
+   * menjadi batas hitung, sehingga jam/bulan yang belum lewat tetap dikecualikan
+   * tanpa mengorbankan celah setelah sample terakhir.
+   */
+  private currentSlotIndex(): number {
+    const now = new Date();
+    const tz = 'Asia/Makassar';
+
+    if (this.selectedPeriod === 'harian') {
+      const hour = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', hour12: false, timeZone: tz }).format(now);
+      return this.chartLabels.findIndex(l => String(l).trim().startsWith(`${hour}:`));
     }
-    return missing;
+
+    if (this.selectedPeriod === 'tahunan') {
+      const month = new Intl.DateTimeFormat('en-GB', { month: 'short', timeZone: tz }).format(now);
+      return this.chartLabels.findIndex(l => String(l).trim().toLowerCase() === month.toLowerCase());
+    }
+
+    return -1;
+  }
+
+  /** Label sumbu Y pada `fraction` dari skala. Sumbu mengikuti `chartMaxValue`. */
+  axisLabel(fraction: number): string {
+    const value = (this.chartMaxValue || 300) * fraction;
+    return String(value >= 100 ? Math.round(value) : Math.round(value * 10) / 10);
   }
 
   generateChartPaths() {
@@ -741,24 +765,24 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     const rect = host ? host.getBoundingClientRect() : null;
     if (!rect || rect.width <= 0) return;
 
-    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-    const index = points > 1 ? Math.round(ratio * (points - 1)) : 0;
+    const index = indexFromRatio((event.clientX - rect.left) / rect.width, points);
     const point = this.chartData[index];
     const max = this.chartMaxValue || 300;
+    const left = leftPercent(index, points);
 
-    // Area grafik tingginya 130 dari viewBox 150.
-    const yFor = (mbps: number) => 130 - Math.min(130, ((Number(mbps) || 0) / max) * 130);
-    const left = points > 1 ? (index / (points - 1)) * 100 : 0;
+    // Area grafik tingginya 130 dari viewBox 150 -> ubah ke persen kotak.
+    const topPct = (mbps: number) =>
+      ((130 - Math.min(130, ((Number(mbps) || 0) / max) * 130)) / 150) * 100;
 
     this.hoveredPoint = {
       label: point.label,
       tx: point.tx,
       rx: point.rx,
       samples: point.samples || 0,
-      left,
-      txY: yFor(point.tx),
-      rxY: yFor(point.rx),
-      flip: left > 75
+      leftPct: left,
+      txTopPct: topPct(point.tx),
+      rxTopPct: topPct(point.rx),
+      align: alignFor(left)
     };
     this.cdr.markForCheck();
   }

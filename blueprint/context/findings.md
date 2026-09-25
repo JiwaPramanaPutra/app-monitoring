@@ -24,6 +24,7 @@ Re-confirmed at target 3db1301 (2026-09-25, independent automatic review): this 
 Re-examined at target 48202b5 (2026-09-25, independent automatic review): `npm run verify` ran 79/79 backend tests green, including `redact.test.js`. `auth.js`/`project-utils.js` and their suites remain outside the reviewed delta, so the status stays `fixed` (P3).
 Re-confirmed at target fbc777d (2026-09-25, independent automatic review): this pass's `npm run verify` ran all 79 backend tests green (`auth`, `redact`, `project-utils`, `laporan-utils`, `device-identity`, `router-errors`, `router-interfaces`, `traffic-response`). `backend/services/redact.js` and `backend/test/redact.test.js` are inside this delta; `backend/services/auth.js` and `project-utils.js` and their suites remain outside it, so closure still belongs to a full-project or `backend/`-scoped pass. Status stays `fixed` (P3).
 
+
 ### F-25 [P2] unverified - Restart-policy starts can still bypass Mongo readiness and silently use JSON storage
 
 **File:** docker-compose.yml:4,15,24-28; backend/server.js:27-33,73
@@ -38,6 +39,7 @@ Re-examined at target fbc777d (2026-09-25): the initial connect is still `mongoo
 Re-examined at target 12c994b (2026-09-25): `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`; `docker-compose.yml` is outside this delta. Still `unverified`; no Docker available.
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): unchanged - `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`. Still `unverified`; no Docker available.
 
+
 ### F-26 [P3] open - Backend package metadata still declares the ISC license
 
 **File:** backend/package.json:15; README.md:128; LICENSE:1
@@ -49,6 +51,7 @@ Re-confirmed at target 6e9eaca (2026-09-25): `backend/package.json`, `README.md`
 Re-confirmed at target 3db1301 (2026-09-25): `backend/package.json:15` still declares `"license": "ISC"`; the file is outside this delta. Status stays `open` (P3).
 Re-confirmed at target 48202b5 (2026-09-25): `backend/package.json:15` still declares `"license": "ISC"` and the file is outside this delta. Status stays `open` (P3).
 Re-confirmed at target fbc777d (2026-09-25): `backend/package.json:15` still declares `"license": "ISC"` and the file is outside this delta. Status stays `open` (P3).
+
 
 ### F-30 [P3] fixed - Bridge credential tests assert an input shape the app cannot produce; the affected component workflows are untested
 
@@ -62,6 +65,7 @@ Re-examined at target 6e9eaca (2026-09-25): the fixture half still holds (`route
 Re-examined at target 3db1301 (2026-09-25): the helper half is still repaired and green, and the save/edit workflows (`saveDevice`, `saveEditedDevice`) still have no test; new F-39 and F-40 are exactly defects in those untested call sites. Status stays `fixed` (P3).
 Re-examined at target 48202b5 (2026-09-25): `router-traffic-link.spec.ts` still passes (41 tests) and there is still no `monitoring.component.spec.ts` or component harness, so the save/edit/delete and bridge paths remain covered only by reading; new F-41 and F-42 land in exactly that untested surface. Status stays `fixed` (P3).
 Re-examined at target fbc777d (2026-09-25): `router-traffic-link.spec.ts` now passes 44 tests (the new Mongo `_id` cases) and no `monitoring.component.spec.ts` or component harness exists (the vitest run lists seven spec files, none for the component), so `saveDevice`, `saveEditedDevice`, `confirmDelete`, `editStopsTraffic`, and `bridgeHasStoredCreds` remain covered only by reading. The F-41 repair itself is additionally pinned by helper tests; the F-42 component getter is not. Status stays `fixed` (P3).
+
 
 ### F-31 [P3] unverified - Per-interface monitor probes add up to (timeout x running interfaces) to the interface-list request
 
@@ -78,6 +82,7 @@ Re-examined at target fbc777d (2026-09-25): `listRouterInterfaces` (`backend/ser
 Re-examined at target 12c994b (2026-09-25): the loop is now `backend/server.js:352-365`; still one sequential `monitor-traffic once` per running interface with only the per-interface `timeout` and no overall deadline. Still `unverified`; no router available to measure.
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `listRouterInterfaces` (`backend/server.js:336-373`) and its loop (`:352-365`) are unchanged; the collector's new `isInterfaceRunning` adds one more router round-trip on zero-traffic polls but does not change this endpoint. Still `unverified`; no router available to measure.
 
+
 ### F-33 [P2] fixed - Bridge draft survives a device-type or site change and can block saves on hidden fields or bridge a non-Router device
 
 **File:** frontend/src/app/pages/monitoring/monitoring.component.ts:703-710,720-726,1175-1182,1251; frontend/src/app/pages/monitoring/monitoring.component.html:535,782,849
@@ -89,6 +94,7 @@ Re-examined at target 6e9eaca (2026-09-25, independent automatic review): the ty
 Re-examined at target 3db1301 (2026-09-25): `activeBridgeDraft` (`monitoring.component.ts:1126-1129`) is still the single gate used for validation and write in both save paths (`:721`, `:1221`), and the site-change half remains open as F-36. Status stays `fixed` (P2).
 Re-examined at target 48202b5 (2026-09-25): the type gate is unchanged (`activeBridgeDraft` `monitoring.component.ts:1126-1129`, validation/write `:721`, `:1221`; `bridged` `:1298`), so a hidden non-Router draft still cannot block a save or write `routerConfig`. The site-change half remains open as F-36. Status stays `fixed` (P2).
 Re-examined at target fbc777d (2026-09-25): `activeBridgeDraft` (`monitoring.component.ts:1126-1129`) is still the single gate used for validation and write in both save paths (`:721`, `:1230`) and `bridged` still reads it (`:1307`), so the type-change half stays repaired. The site-change half remains open as F-36. Status stays `fixed` (P2).
+
 
 ### F-34 [P3] open - The named-site `resolveRouterConfig` isolation rule has no committed test
 
@@ -103,6 +109,7 @@ Re-examined at target fbc777d (2026-09-25): `resolveRouterConfig`/`findProjectSi
 Re-examined at target 12c994b (2026-09-25): `resolveRouterConfig`/`findProjectSite` (`backend/server.js:70-114`) are still module-private and none of the ten backend suites covers the named-site-with-config, named-site-without-config, or unnamed-site/env directions. Status stays `open` (P3).
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `resolveRouterConfig` (`backend/server.js:71`) and `findProjectSite` (`:102`) are still module-private and no test under `backend/test/` covers the three resolution directions. Status stays `open` (P3).
 
+
 ### F-36 [P2] open - Auto-enabled Edit-modal bridge draft is not bound to the site, blocking unrelated saves and silently re-enabling monitoring
 
 **File:** frontend/src/app/pages/monitoring/monitoring.component.ts:669-688, 704-712, 1193-1201, 1109-1112, 1302-1327; frontend/src/app/pages/monitoring/monitoring.component.html:465-467, 535-588
@@ -115,6 +122,7 @@ Re-examined at target 48202b5 (2026-09-25): unchanged (`initRouterBridgeForEdit`
 Re-examined at target fbc777d (2026-09-25): unchanged — `initRouterBridgeForEdit` still auto-enables the bridge for a Router device whose site has no `routerConfig.host` or whose host equals the device IP (`monitoring.component.ts:670-689`), the Edit modal's Site Location select (`monitoring.component.html:465`) still has no change handler, and `onNewSiteLocationChange` (`monitoring.component.ts:593-596`) still resets only gedung/lantai. Status stays `open` (P2).
 Re-examined at target 1c472eb (2026-09-25, independent automatic review): unchanged — `initRouterBridgeForEdit` (`monitoring.component.ts:680-698`) still auto-enables the bridge when the site has no `routerConfig.host` or its host equals the device IP, the Edit Site Location select (`monitoring.component.html:465-467`) still has no change handler, and `onNewSiteLocationChange` (`monitoring.component.ts:596-599`) still resets only gedung/lantai. Status stays `open` (P2).
 
+
 ### F-37 [P2] open - Stale in-flight site responses are applied after a site switch
 
 **File:** frontend/src/app/pages/monitoring/monitoring.component.ts:259-313, 206-229
@@ -126,6 +134,7 @@ Re-examined at target 3db1301 (2026-09-25): `fetchRouterTraffic` (`monitoring.co
 Re-examined at target 48202b5 (2026-09-25): unchanged — `fetchRouterTraffic` (`monitoring.component.ts:260-313`) and `initDevices` (`:207-230`) still apply responses with no `selectedSite` comparison; only `prefillTrafficHistory` guards (`:562`). Status stays `open` (P2).
 Re-examined at target fbc777d (2026-09-25): unchanged — `fetchRouterTraffic` (`monitoring.component.ts:260-314`) and `initDevices` (`:207-230`) still apply responses with no `selectedSite` comparison; only `prefillTrafficHistory` guards (`:562`). Status stays `open` (P2).
 Re-examined at target 1c472eb (2026-09-25, independent automatic review): unchanged — `fetchRouterTraffic` (`monitoring.component.ts:263-317`) and `initDevices` (`:210-233`) still apply responses with no `selectedSite` comparison; only `prefillTrafficHistory` guards (`:565`). Status stays `open` (P2).
+
 
 ### F-38 [P3] open - Live-traffic path duplicates the new tested rate parser
 
@@ -141,6 +150,7 @@ Re-examined at target 12c994b (2026-09-25): unchanged — `fetchMikrotikTraffic`
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `backend/server.js:169-170` is unchanged, and the zero-rate guard at `:830` depends on those inline numbers: a malformed reply yields `NaN`, both `NaN === 0` comparisons are false, and the collector skips the link check and falls through to the traffic-flow `recordDowntimeEnd` (`:855`). The duplication is still the same class. Status stays `open` (P3).
 Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the inline `parseInt` is now `backend/server.js:170-171` and the collector's new idle gate at `:831` still reads those raw numbers. A non-numeric rate yields `NaN`, which the gate reads as "traffic flowing" and which makes `decideDowntimeAction`'s own idle test disagree (recorded as F-67). Status stays `open` (P3).
 
+
 ### F-45 [P3] open - `hasPassword` read-only marker can still be persisted for unmatched sites and on project create
 
 **File:** backend/services/redact.js:43-55; backend/server.js:1050-1053
@@ -150,6 +160,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the i
 **Resolution:**
 Re-examined at target 12c994b (2026-09-25): `preserveRouterPasswords` still `continue`s before the `delete site.routerConfig.hasPassword` when a site has no stored counterpart (`backend/services/redact.js:46,55`), and `POST /api/projects` (`backend/server.js:1118-1131`) still does not call the helper. Status stays `open` (P3).
 
+
 ### F-46 [P3] open - Project & Site form still defaults the router port to 8728 while every backend connection uses TLS
 
 **File:** frontend/src/app/pages/project-site/project-site.component.ts:34,139,142; backend/server.js:145-151,242-248,341-347
@@ -157,6 +168,7 @@ Re-examined at target 12c994b (2026-09-25): `preserveRouterPasswords` still `con
 **Why it matters:** Every backend RouterOS connection passes `tls: MIKROTIK_TLS_OPTIONS` (`backend/server.js:151,248,347`), so a `routerConfig` saved from the Project & Site form with its default port 8728 (plain api) can never connect; `resolveRouterConfig` also falls back to 8728 when the stored port is missing (`server.js:83`). This is the same wrong-default class batch 2 removed from the device bridge form (F-29), still present in the pre-existing Project & Site form (outside this delta's touched files, recorded per the identity/default sweep). The user only learns from the traffic widget's connection-failure message.
 **Suggested fix:** Default the site form's port to 8729 (api-ssl), matching the device bridge form. This changes a shipped default, so it needs the user's explicit decision and is not an automatic repair.
 **Resolution:**
+
 
 ### F-48 [P2] open - Existing duplicate device keys in local JSON mode still break row identity and make delete/update a first-match lottery
 
@@ -168,6 +180,7 @@ Re-examined at target 12c994b (2026-09-25): `preserveRouterPasswords` still `con
 Re-examined at target 5c94633 (2026-09-25, independent automatic review): still true. The ignored local `backend/data/devices.json` holds 8 records forming a single duplicate-`_id` group (all 8 share one key), so in JSON fallback mode `deviceKey()` returns the same key for every row (F-43's all-menus-open symptom) and a delete by that key removes the first matching record, not necessarily the clicked one. The delta prevents new duplicates but does not repair stored data; status stays `open` (P2).
 Re-examined at target 37c6f44 (2026-09-25, independent automatic review): unchanged. The ignored `backend/data/devices.json` still holds 8 records whose `_id` is all `1` (read after this pass's `npm run verify`; the suite's `DATA_DIR` isolation left the real file untouched - no test records present). `deviceKey()` therefore still returns one key for every row in JSON mode, and delete/update still act on the first `_id=1` record. The delta prevents new duplicates but does not repair stored data. Status stays `open` (P2).
 
+
 ### F-49 [P3] open - Storage wiring for the new device-key helpers has no committed test, so the wrong-record path is invisible to `npm run verify`
 
 **File:** backend/test/device-identity.test.js:92-167; backend/storage.js:269-296; backend/server.js:1133-1150
@@ -177,6 +190,7 @@ Re-examined at target 37c6f44 (2026-09-25, independent automatic review): unchan
 **Resolution:** Sebagian tertangani 2026-09-25. `backend/test/storage-devices.test.js` menguji kontrak `saveLocalDevice`/`updateLocalDevice`/`deleteLocalDevice` (termasuk kasus F-47 dan F-44), tetapi **wiring di `server.js` masih belum diuji otomatis** karena endpoint Express perlu server hidup atau harness HTTP. Baris `newDevice = storage.saveLocalDevice(req.body)` sudah diberi komentar alasan, tapi regresinya belum terkunci test. Status tetap `open`.
 Re-examined at target 5c94633 (2026-09-25, independent automatic review): `backend/test/storage-devices.test.js` now locks the layer the finding pointed at - the returned record has a findable `_id`, a colliding client key is re-keyed, and delete/update touch exactly one record - and it ran green in this pass's verify. The `server.js:1147` wiring itself is still not exercised by any automated test (the endpoint needs a live server or HTTP harness), so a recurrence of "POST discards the return value" remains invisible to `npm run verify`. Status stays `open` (P3).
 Re-examined at target 37c6f44 (2026-09-25, independent automatic review): unchanged. `backend/test/storage-devices.test.js` still exercises only `storage.js`, and `backend/server.js:1147` is still not exercised by any automated test, so the POST wiring remains invisible to `npm run verify`. Status stays `open` (P3).
+
 
 ### F-50 [P3] open - Local project storage still uses the match-`_id`-or-`id` predicate and never enforces key uniqueness (identity-sweep remainder)
 
@@ -189,6 +203,7 @@ Re-examined at target 5c94633 (2026-09-25, independent automatic review): `saveL
 Re-examined at target 37c6f44 (2026-09-25, independent automatic review): unchanged - the project operations at `backend/storage.js:306-331` still match `_id` or `id` with no uniqueness check; this delta only touches the device operations. Status stays `open` (P3).
 Re-examined at target 12c994b (2026-09-25): the local project operations moved to `backend/storage.js:317-338` but still match `_id` or `id` with no uniqueness check; this delta only adds `kind` to the downtime ledger. Status stays `open` (P3).
 
+
 ### F-51 [P3] open - `updateLocalDevice` can still store a duplicate `id`, so the "duplicate keys are never stored" claim holds only for create
 
 **File:** backend/storage.js:282-289; backend/server.js:1155-1170
@@ -198,6 +213,7 @@ Re-examined at target 12c994b (2026-09-25): the local project operations moved t
 **Resolution:** Re-examined at target 37c6f44 (2026-09-25, independent automatic review): `updateLocalDevice` (`backend/storage.js:282-289`) still merges a client-supplied `id` with no uniqueness check. The create path has the same gap when a request supplies a free `_id` together with an already-used `id`: `saveLocalDevice` keys only off `device._id || device.id` (`:275-276`), so the stored record can carry a duplicate legacy `id`. `_id` stays unique in both paths, so the ambiguity needs an `id`-only lookup. Status stays `open` (P3).
 Re-examined at target 12c994b (2026-09-25): `updateLocalDevice` is now `backend/storage.js:293-300` and still merges a client-supplied `id` with no uniqueness check; `saveLocalDevice` (`:283-291`) still keys only off `device._id || device.id`. Status stays `open` (P3).
 
+
 ### F-52 [P3] open - `deviceKey()` is the single identity source, but twelve `_id || id` comparisons remain in the component
 
 **File:** frontend/src/app/pages/monitoring/monitoring.component.ts:250,252,719,742,767,771,950-951,965,978,1000,1006,1027; frontend/src/app/shared/device-identity.ts:29-35
@@ -205,6 +221,7 @@ Re-examined at target 12c994b (2026-09-25): `updateLocalDevice` is now `backend/
 **Why it matters:** The spec's repair says `deviceKey()` exists so the `_id || id` pattern is "tidak lagi ditulis ulang dan tidak bisa menyimpang", but only the template (`monitoring.component.html:202,213`) and `toggleDropdown` use it. The remaining comparisons inline `(d._id || d.id)` and compare raw values without the helper's String normalization or null handling. All current call sites behave correctly for reachable records (the preference order matches), so this is not a live defect; it is the same duplicated identity pattern that produced F-39/F-41/F-43, and a future edit copied from these lines can reintroduce the undefined-key bug the helper set out to end.
 **Suggested fix:** Compare through the helper on both sides (for example `deviceKey(d) === deviceKey(dev)`) at those call sites, or document why the remaining sites intentionally bypass it. No behavior decision needed.
 **Resolution:** Re-examined at target 37c6f44 (2026-09-25, independent automatic review): `deviceKey()` is still used only by `monitoring.component.html:202,213` and `toggleDropdown`; the inline `(d._id || d.id)` comparisons remain at `monitoring.component.ts:250,252,719,742,767,771,950-951,965,978,1000,1006,1027`, unchanged by this delta. Status stays `open` (P3).
+
 
 ### F-54 [P3] open - Local-mode device responses call a client-controlled `toObject` property
 
@@ -215,6 +232,7 @@ Re-examined at target 12c994b (2026-09-25): `updateLocalDevice` is now `backend/
 **Resolution:**
 Re-examined at target 12c994b (2026-09-25): the truthiness guards are now `backend/server.js:1222,1239` and still read `newDevice.toObject ? newDevice.toObject() : newDevice` / `updatedDevice && updatedDevice.toObject ? ...`; the `typeof` fix was not applied. Status stays `open` (P3).
 
+
 ### F-58 [P2] open - `getRawSamples` uses `collected.push(...docs)`, which throws above 131,072 documents and silently drops the whole MongoDB source
 
 **File:** backend/server.js:571, 588-597
@@ -224,6 +242,7 @@ Re-examined at target 12c994b (2026-09-25): the truthiness guards are now `backe
 **Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `backend/server.js:571` is still `collected.push(...docs)` inside the Mongo `try` (`:561-575`), so an oversized result would still be caught, logged as "memakai JSON saja", and served JSON-only. The current data is below the engine limit, so this stays a latent P2. Status stays `open` (P2).
 Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the spread is now `backend/server.js:572` (inside the Mongo `try` at `:562-576`); the JSON push at `:582` has the same shape but is bounded by `MAX_TRAFFIC_SAMPLES = 25000` (`backend/storage.js:25`). The Mongo source remains unbounded and the failure mode is unchanged. Status stays `open` (P2).
 
+
 ### F-59 [P2] open - Every site's uptime probe materialises and sorts both history sources to read one count
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:529-540; backend/server.js:554-599, 626-637
@@ -232,6 +251,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the s
 **Suggested fix:** Add a count-only mode to `/api/router/history` (Mongo `countDocuments` plus filtered JSON length) and call it from the uptime table; keep `totalSamples` semantics unchanged.
 **Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): the uptime probe still requests `raw=1&limit=1` once per site (`frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:536-543`) and `getRawSamples` still loads both sources, merges, dedupes and sorts the whole union before the response is sliced (`backend/server.js:554-599`, `:626-637`), so page work still grows with total stored history and site count. Status stays `open` (P2).
 Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the probe is now `laporan-trafik.component.ts:535-543` and the merge now always loads BOTH sources (`backend/server.js:559-600`), so the per-site cost is at least as large. Status stays `open` (P2).
+
 
 ### F-61 [P3] open - The new merge and classification logic have no committed tests
 
@@ -243,6 +263,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the p
 Re-examined at target dd43d25 (2026-09-25, independent automatic review): the link-decision half is now extracted and covered by `backend/test/downtime-classify.test.js` (9 tests), but the `getRawSamples` merge (`backend/server.js:559-600`) still has no test, and the new suite's legacy case asserts the opposite of its own title (F-66), so the gap is only half closed. Status stays `open` (P3).
 Re-examined at target 352df5b (2026-09-25, independent automatic review): the suite is now 12 tests and the F-66 case was corrected, but the collector wiring - the `isIdleSample` gate and the `ongoing ? (ongoing.kind || 'unreachable') : null` normalization (`backend/server.js:831-845`) - still has no automated coverage, and the new legacy test duplicates the F-55 case instead of exercising it; recorded as F-72. The `getRawSamples` merge (`backend/server.js:559-600`) is unchanged by this delta and still untested. Status stays `open` (P3).
 
+
 ### F-62 [P3] open - `aggregateSamples` omits empty buckets for `mingguan`, `bulanan`, and `custom`, so the gap marker never engages there
 
 **File:** backend/server.js:504-546; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:629-632, 648-688
@@ -252,6 +273,7 @@ Re-examined at target 352df5b (2026-09-25, independent automatic review): the su
 **Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `aggregateSamples` still emits zero-sample slots only for `harian`/`tahunan` (`backend/server.js:534-545`), so `mingguan`, `bulanan`, and `custom` return only keys that had samples and the gap marker stays inert there (`frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:639-641`). Status stays `open` (P3).
 Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): unchanged - the zero-slot branch is still gated on `['harian', 'tahunan'].includes(period)` (`backend/server.js:535-545`), and the frontend gap logic keys off the `samples` field that every emitted bucket carries (`:533`). Status stays `open` (P3).
 
+
 ### F-63 [P3] open - Hand-editing `backend/data/traffic_history.json` while the backend runs is silently clobbered
 
 **File:** backend/storage.js:108-122 (`scheduleSaveTraffic`); backend/server.js:819-824, 861 (collector writes every 6 s)
@@ -259,6 +281,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Why it matters:** The running process owns the JSON file: every `recordTrafficSample` schedules a full rewrite two seconds later and the collector adds a sample every 6 s, so an external edit is overwritten within seconds. The builder hit this during Step 4, and the file was rewritten again during this review (mtime moved to 2026-09-25T10:02:34Z while a backend dev server on port 3000 was running). The spec's own data steps edit this file, so the hazard is likely to recur on any repeat or re-run.
 **Suggested fix:** Document and enforce "stop the backend before editing `backend/data/*.json`" in the data steps, or move site renames behind a one-off script that mutates through the app/DB. No product behavior change needed.
 **Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): a backend process is running during this review and `backend/data/traffic_history.json` still receives a sample about every 6 seconds (newest observed `2026-09-25T10:19:54.518Z`, 3.5 MB), and both `scheduleSaveTraffic` (`backend/storage.js:108-122`) and `saveDowntimeEvents` (`:124-130`) still rewrite the whole file from memory, so an external edit is clobbered. Status stays `open` (P3).
+
 
 ### F-65 [P2] open - Uptime summary scores events on a rolling `now - periodMs` window and ignores `endDate`, so a back-dated custom range can show 100% while its log shows real downtime
 
@@ -268,34 +291,39 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Suggested fix:** Derive one window per refresh from the selected period (`startDate` 00:00 WIB through `endDate` 23:59:59 WIB, or the same instants the probe sends), filter events by interval overlap and clip each event's duration to the window, and compute `totalPeriodSeconds` from those same instants so the summary and the log cannot disagree.
 **Resolution:** Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the event filter still selects only `eventTime >= new Date(now.getTime() - periodMs)` with no end bound (`laporan-trafik.component.ts:506-510`), the evidence probe sends `startDate..endDate` (`:535-543`), and `totalPeriodSeconds` still comes from the local-midnight `periodMs` difference (`:548-555`), so a back-dated custom range can still show a numeric uptime that its own log contradicts. Status stays `open` (P2).
 
-### F-69 [P2] open - The hover tooltip is clipped at the left edge by the chart's `overflow-x:auto` wrapper
+
+### F-69 [P2] fixed - The hover tooltip is clipped at the left edge by the chart's `overflow-x:auto` wrapper
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.html:132-134,176-202; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:751,761
 **Found:** 2026-09-25 by /audit (scope: current; lens: quality)
 **Why it matters:** The tooltip's containing block is the `position:relative` div (`html:134`) inside the `overflow-x:auto` wrapper (`html:132`). It is placed with `[style.left.%]="hoveredPoint.left"` plus `translateX(-50%)` (`html:183-184`), so half its width sits left of the point. The widest content, "Tidak ada data pada jam ini" (~28 chars at 10.5px, roughly 170px including padding), puts about 85px outside the chart at `left = 0`. The wrapper is a scroll container, and CSS clips overflow at its padding box; content in the inline-start direction is not reachable by scrolling, so that half is cut off. With equally spaced points, the first buckets are always inside that clipped strip: at the current desktop layout (roughly 1,100px of chart) the first two hourly buckets are affected and more on narrower screens; a single-bucket `custom` range (`chartData.length === 1` -> `left = 0`, `ts:737-751`) is always affected. `flip: left > 75` (`ts:761`) guards only the right edge, so there is no left equivalent. Confirmed by reading the CSS/DOM and SVG geometry; no browser harness exists, so it was not visually reproduced.
 **Suggested fix:** Mirror the existing right-edge `flip` with a left guard: when the point is close enough to 0 that `left% * chartWidth < tooltipWidth / 2`, place the box with `translateX(0)` (or clamp its left offset) instead of `translateX(-50%)`; place the single-bucket case inside the chart. Keep the same positioning context so the box still follows the cursor.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. Posisi tooltip memakai tiga mode perataan (`alignFor`): menempel kiri pada `left < 12`, membalik ke kiri pada `left > 75`, sisanya di tengah. Titik-titik awal tidak lagi terpotong pembungkus yang `overflow-x: auto`. Aritmetikanya murni dan teruji di `shared/chart-math.ts`.
 
-### F-70 [P3] open - The hover marker dots render as wide flat ellipses because `preserveAspectRatio="none"` scales the circle radius with the chart width
+
+### F-70 [P3] fixed - The hover marker dots render as wide flat ellipses because `preserveAspectRatio="none"` scales the circle radius with the chart width
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.html:135,167-172
 **Found:** 2026-09-25 by /audit (scope: current; lens: quality)
 **Why it matters:** The SVG uses `viewBox="0 0 100 150"` with `preserveAspectRatio="none"`, so x scales by `width/100` and y by `150/150 = 1`. The marker circles use `r="2.5"` in user units, which renders as `rx = 2.5 * width/100` (roughly 25-28px at the current ~1,000-1,100px chart) and `ry = 2.5px` - a ~50x5px ellipse, not the "titik di posisi Tx/Rx" the spec promises. `vector-effect="non-scaling-stroke"` protects only the stroke, not the radius. The dot centers (x and y) are correct and match the paths, so this is a visual-shape defect, not a data-position one. At `left = 0`/`100` the ellipse also paints half outside the SVG box, clipped by the scroll container on the left.
 **Suggested fix:** Draw the marker at a fixed screen size - for example two small absolutely positioned dots in the existing overlay using the same `left` percentage and a pixel `top` derived from `txY`/`rxY`, or bind `rx`/`ry` so the on-screen shape is round (`ry` fixed, `rx = ry * 150 / chartWidthPx`). Visual-only change.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. Penanda dipindah dari SVG ke overlay HTML dengan ukuran tetap (7px, `border-radius: 50%`), jadi titiknya bulat di layar berapa pun lebarnya — `preserveAspectRatio="none"` tidak lagi memipihkannya. Garis penanda tetap putus-putus.
 
-### F-71 [P2] open - Stopping the "titik tanpa data" count at the last sample also hides real gaps after it and makes a fully empty day report 0
+
+### F-71 [P2] fixed - Stopping the "titik tanpa data" count at the last sample also hides real gaps after it and makes a fully empty day report 0
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:657-670; backend/server.js:526-547
 **Found:** 2026-09-25 by /audit (scope: current; lens: quality)
 **Why it matters:** `aggregateSamples` still emits every `harian` hourly slot (and every `tahunan` month) with `samples: 0` when there is no data (`backend/server.js:535-545`), including past ones. The new counter stops at the last bucket with `samples > 0` and returns 0 when no bucket has data, so three reachable states are now under-reported: (a) a current day whose collector or router stopped at 14:00 counts nothing for 15:00-23:00 even though those buckets are in the past - the chart simply ends early and the badge disappears, which is the opposite of the signal this badge exists to give; (b) a day with no samples at all (backend down, restored backup, a site whose collector never ran) shows no badge instead of the previous "24 titik tanpa data" (the API returns the 24 empty slots, so the empty-state branch is not taken); (c) for `tahunan`, every month between the last sample and the current month is ignored. The frontend knows the current time, so "not yet happened" and "data lost" can be told apart; the F-68 ledger entry itself named the alternative ("cap the daily view at the current hour"). Confirmed by reading the code paths.
 **Suggested fix:** Count `samples === 0` buckets up to the bucket that contains the current time instead of up to the last sample - for `harian` the current hour and for `tahunan` the current month, compared against the same WIB labels the backend emits. That keeps F-68's no-future-false-positives goal and restores the outage/empty-day signal; alternatively stop emitting future slots in `aggregateSamples`. This refines the shipped badge behavior, so the user may also choose to accept the current trade-off.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. Batas hitung celah kini `missingLimit(lastIndexWithData, currentSlotIndex)` — yang LEBIH JAUH antara sample terakhir dan slot waktu "sekarang". Jam/bulan yang belum lewat tetap dikecualikan, tapi celah setelah sample terakhir (gangguan siang ini) dan hari yang bolong total kembali terhitung. `currentSlotIndex()` mengenali label jam untuk `harian` dan label bulan untuk `tahunan`; periode lain jatuh ke perilaku lama karena tidak punya slot kosong.
 
-### F-72 [P3] open - The delta's new logic has no test where it can regress: the F-66 caller normalization and the chart hover/gap arithmetic
+
+### F-72 [P3] fixed - The delta's new logic has no test where it can regress: the F-66 caller normalization and the chart hover/gap arithmetic
 
 **File:** backend/test/downtime-classify.test.js:44-62; backend/server.js:844; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:657-670,736-776
 **Found:** 2026-09-25 by /audit (scope: current; lens: tests)
 **Why it matters:** Two new behaviors are invisible to `npm run verify`. (1) The rewritten legacy test (`backend/test/downtime-classify.test.js:53-62`) passes `ongoingKind: 'unreachable'` - the same input and expectation as the pre-existing F-55 test (`:44-51`) - so it adds no coverage and cannot catch the regression it is named after. The actual normalization lives in `backend/server.js:844` (`ongoing ? (ongoing.kind || 'unreachable') : null`); no test exercises it (the `server.js` module starts an HTTP server, so nothing imports it), and deleting that expression would still pass the suite - exactly the false confidence F-66 described. (2) `chartMissingBuckets`'s edge cases (all-empty, gap before/after the last sample), the cursor-to-index mapping (`Math.round(ratio * (n - 1))`, `left`, `flip`), and `formatChartValue` are pure arithmetic but none of the seven frontend specs imports or covers them. The project already tests extracted pure helpers (`shared/device-identity.spec.ts`, `shared/router-traffic-link.spec.ts`), so both are coverable without a component harness.
 **Suggested fix:** Move the caller's kind normalization into `downtime-classify.js` (for example `normalizeOngoingKind(ongoing)`) and test it directly, replacing the duplicate case. Extract the chart index/format/count arithmetic into a small exported helper (for example `pages/laporan-trafik/chart-hover.ts`) and cover the listed cases with vitest. No component harness required.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. Aritmetika grafik diekstrak ke `frontend/src/app/shared/chart-math.ts` (`indexFromRatio`, `leftPercent`, `alignFor`, `lastIndexWithData`, `countMissing`, `missingLimit`) dengan 20 test vitest, termasuk kasus grafik satu titik, kursor di luar kotak, dan batas hitung celah. Test "legacy" yang duplikat sudah diganti dua kasus yang benar-benar berbeda (event lama ternormalisasi vs tidak ada event).
+
