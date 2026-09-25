@@ -552,9 +552,58 @@ function aggregateSamples(samples, period) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: Ambil raw samples dari MongoDB atau fallback ke JSON
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Batas jumlah sample Mongo yang dimuat sekali jalan. Diambil terbaru dulu
+// supaya yang terpotong adalah yang paling lama, bukan yang paling baru.
+const SAMPLE_LIMIT = 200000;
+
+/** Batas rentang dari tanggal `YYYY-MM-DD` (waktu WIB). Satu sumber untuk semua pembaca. */
+function rangeBounds(startDate, endDate) {
+    return {
+        startMs: startDate ? new Date(startDate + 'T00:00:00+07:00') : null,
+        endMs: endDate ? new Date(endDate + 'T23:59:59+07:00') : null
+    };
+}
+
+/** Query Mongo untuk satu site pada satu rentang. */
+function mongoSampleQuery(site, startMs, endMs) {
+    const query = { site };
+    if (startMs || endMs) {
+        query.timestamp = {};
+        if (startMs) query.timestamp.$gte = startMs;
+        if (endMs) query.timestamp.$lte = endMs;
+    }
+    return query;
+}
+
+/**
+ * Ada sample tersimpan untuk site ini di rentang itu?
+ *
+ * Dipakai tabel uptime, yang sebelumnya membaca SELURUH riwayat lalu
+ * menggabungkan, membuang duplikat, dan mengurutkannya hanya untuk tahu "ada
+ * sample atau tidak". Jawabannya boolean, jadi penggabungan tidak diperlukan —
+ * cukup salah satu sumber yang berisi.
+ */
+async function hasSamplesInRange(site, startDate, endDate) {
+    const { startMs, endMs } = rangeBounds(startDate, endDate);
+
+    if (mongoose.connection.readyState === 1) {
+        try {
+            const TrafficSample = require('./models/TrafficSample');
+            if (await TrafficSample.countDocuments(mongoSampleQuery(site, startMs, endMs)) > 0) return true;
+        } catch (e) {
+            console.warn('MongoDB count failed, memakai JSON saja:', e.message);
+        }
+    }
+
+    let jsonSamples = storage.getTrafficHistory(site);
+    if (startMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) >= startMs);
+    if (endMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) <= endMs);
+    return jsonSamples.length > 0;
+}
+
 async function getRawSamples(site, startDate, endDate) {
-    const startMs = startDate ? new Date(startDate + 'T00:00:00+07:00') : null;
-    const endMs = endDate ? new Date(endDate + 'T23:59:59+07:00') : null;
+    const { startMs, endMs } = rangeBounds(startDate, endDate);
 
     const collected = [];
     const sources = [];
@@ -562,14 +611,21 @@ async function getRawSamples(site, startDate, endDate) {
     if (mongoose.connection.readyState === 1) {
         try {
             const TrafficSample = require('./models/TrafficSample');
-            const query = { site };
-            if (startMs || endMs) {
-                query.timestamp = {};
-                if (startMs) query.timestamp.$gte = startMs;
-                if (endMs) query.timestamp.$lte = endMs;
+
+            const docs = await TrafficSample.find(mongoSampleQuery(site, startMs, endMs))
+                .sort({ timestamp: -1 })
+                .limit(SAMPLE_LIMIT)
+                .lean();
+
+            if (docs.length >= SAMPLE_LIMIT) {
+                console.warn(`[History] ${site}: batas ${SAMPLE_LIMIT} sample tercapai, sisanya tidak dimuat.`);
             }
-            const docs = await TrafficSample.find(query).sort({ timestamp: 1 }).lean();
-            collected.push(...docs);
+
+            // Perulangan biasa, BUKAN `push(...docs)`: penyebaran argumen melempar
+            // RangeError di atas ~131k elemen, dan karena ini berada di dalam
+            // `try`, error itu tertangkap sebagai "MongoDB gagal" sehingga sumber
+            // Mongo hilang diam-diam — persis pemotongan yang ingin dihilangkan.
+            for (let i = docs.length - 1; i >= 0; i--) collected.push(docs[i]);
             sources.push('mongodb');
         } catch (e) {
             console.warn('MongoDB query failed, memakai JSON saja:', e.message);
@@ -579,7 +635,7 @@ async function getRawSamples(site, startDate, endDate) {
     let jsonSamples = storage.getTrafficHistory(site);
     if (startMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) >= startMs);
     if (endMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) <= endMs);
-    collected.push(...jsonSamples);
+    for (const s of jsonSamples) collected.push(s);
     sources.push('json');
 
     // Kedua sumber menyimpan periode yang berbeda (JSON sejak 14/9, MongoDB
@@ -616,6 +672,19 @@ app.get('/api/router/history', async (req, res) => {
 
     if (!site) {
         return res.status(400).json({ success: false, error: 'Parameter site wajib diisi.' });
+    }
+
+    // Mode hitung: hanya menjawab "ada sample atau tidak" di rentang ini, tanpa
+    // memuat riwayatnya. Dipakai tabel uptime, yang sebelumnya membaca SELURUH
+    // riwayat per site hanya untuk satu angka.
+    const countOnly = req.query.count;
+    if (countOnly !== undefined && countOnly !== '0' && countOnly !== 'false') {
+        try {
+            const hasSamples = await hasSamplesInRange(site, startDate, endDate);
+            return res.json({ success: true, site, count: true, hasSamples });
+        } catch (err) {
+            return res.status(500).json({ success: false, error: err.message });
+        }
     }
 
     try {

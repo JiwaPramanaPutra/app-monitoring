@@ -479,31 +479,59 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.rxMaximum = nonZeroRx.length > 0 ? Number(Math.max(...nonZeroRx).toFixed(2)) : 0;
   }
 
-  async generateUptimeData() {
+  /**
+   * Satu jendela periode untuk seluruh halaman — pemilihan event, probe sample,
+   * penyebut uptime, dan log memakai batas yang sama supaya tidak bisa berbeda
+   * pendapat. Batasnya kalender: awal 00:00 sampai akhir 23:59:59 waktu lokal.
+   */
+  private periodWindow(): { start: Date; end: Date } {
     const now = new Date();
-    let periodMs = 24 * 60 * 60 * 1000; // default: harian (1 hari)
+    const start = new Date(now);
+    const end = new Date(now);
 
     switch (this.selectedPeriod) {
       case 'harian':
-        periodMs = 24 * 60 * 60 * 1000;
+        start.setHours(0, 0, 0, 0);
         break;
       case 'mingguan':
-        periodMs = 7 * 24 * 60 * 60 * 1000;
+        start.setDate(start.getDate() - 6);
+        start.setHours(0, 0, 0, 0);
         break;
       case 'bulanan':
-        periodMs = 30 * 24 * 60 * 60 * 1000;
+        start.setMonth(start.getMonth() - 1);
+        start.setHours(0, 0, 0, 0);
         break;
       case 'tahunan':
-        periodMs = 365 * 24 * 60 * 60 * 1000;
+        start.setFullYear(start.getFullYear() - 1);
+        start.setHours(0, 0, 0, 0);
         break;
       case 'custom':
         if (this.startDate && this.endDate) {
-          const s = new Date(this.startDate);
-          const e = new Date(this.endDate);
-          periodMs = e.getTime() - s.getTime() || 24 * 60 * 60 * 1000;
+          start.setTime(new Date(this.startDate).getTime());
+          start.setHours(0, 0, 0, 0);
+          end.setTime(new Date(this.endDate).getTime());
+          end.setHours(23, 59, 59, 999);
+        } else {
+          start.setDate(start.getDate() - 1);
+          start.setHours(0, 0, 0, 0);
         }
         break;
+      default:
+        start.setDate(start.getDate() - 1);
+        start.setHours(0, 0, 0, 0);
     }
+
+    return { start, end };
+  }
+
+  /** `YYYY-MM-DD` waktu lokal — format tanggal yang dipakai endpoint riwayat. */
+  private isoDate(date: Date): string {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  async generateUptimeData() {
+    const window = this.periodWindow();
 
     // Fetch downtime events dari backend untuk semua site
     const results: UptimeData[] = [];
@@ -511,7 +539,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     for (const site of this.sites) {
       let downtimeTotal = 0;      // hanya interface-down = gangguan sungguhan
       let unreachableTotal = 0;   // gagal koneksi = aplikasi kehilangan visibilitas
-      let measuredSamples = 0;    // bukti periode ini memang terukur
+      let hasSamples = false;     // bukti periode ini memang terukur
       let lastDown = '—';
       let lastRecover = '—';
 
@@ -521,16 +549,22 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           const data = await res.json();
           const events: any[] = data.events || [];
 
-          // Filter events within the selected period
-          const periodStart = new Date(now.getTime() - periodMs);
+          // Event yang TUMPANG TINDIH dengan jendela, bukan yang sekadar mulai di
+          // dalamnya. Sebelumnya ujung jendela tidak dibatasi sama sekali, jadi
+          // rentang kustom di masa lalu kehilangan gangguannya.
           const relevantEvents = events.filter((e: any) => {
-            const eventTime = new Date(e.start);
-            return eventTime >= periodStart;
+            const eventStart = new Date(e.start).getTime();
+            const eventEnd = e.end ? new Date(e.end).getTime() : window.end.getTime();
+            return eventEnd >= window.start.getTime() && eventStart <= window.end.getTime();
           });
 
           for (const ev of relevantEvents) {
             if (!ev.end) continue;
-            const seconds = (new Date(ev.end).getTime() - new Date(ev.start).getTime()) / 1000;
+            // Durasinya dipotong ke dalam jendela supaya gangguan yang melewati
+            // batas tidak dihitung penuh.
+            const from = Math.max(new Date(ev.start).getTime(), window.start.getTime());
+            const to = Math.min(new Date(ev.end).getTime(), window.end.getTime());
+            const seconds = (to - from) / 1000;
             if (seconds <= 0) continue;
             // Kejadian tanpa `kind` adalah data lama (sebelum klasifikasi) dan
             // isinya kegagalan koneksi, jadi diperlakukan sebagai `unreachable`.
@@ -549,26 +583,28 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         // Dibiarkan kosong: situs ini akan tampil tanpa dasar pengukuran.
       }
 
-      // Uptime hanya diklaim kalau periode ini memang terukur. Jumlah sample
-      // adalah buktinya; tanpa itu, "100%" cuma asumsi.
+      // Uptime hanya diklaim kalau periode ini memang terukur, dan yang
+      // dibutuhkan cuma "ada sample atau tidak". Backend ditanya dengan mode
+      // hitung; sebelumnya seluruh riwayat dimuat, digabung, dibuang
+      // duplikatnya, lalu diurutkan hanya untuk satu angka.
       try {
-        const params = new URLSearchParams({ site, raw: '1', limit: '1' });
-        if (this.startDate) params.set('startDate', this.startDate);
-        if (this.endDate) params.set('endDate', this.endDate);
+        const params = new URLSearchParams({ site, count: '1' });
+        params.set('startDate', this.isoDate(window.start));
+        params.set('endDate', this.isoDate(window.end));
         const res = await this.api.fetch(`/api/router/history?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
-          measuredSamples = Number(data.totalSamples) || 0;
+          hasSamples = !!data.hasSamples;
         }
       } catch (e) {
         // Tanpa bukti -> uptime tidak diklaim.
       }
 
-      const totalPeriodSeconds = periodMs / 1000;
+      const totalPeriodSeconds = Math.max(0, (window.end.getTime() - window.start.getTime()) / 1000);
       // Uptime hanya diklaim kalau periode ini benar-benar terukur. Adanya
       // kejadian "tidak terpantau" justru berarti kita TIDAK mengukur, jadi itu
       // bukan dasar untuk mengklaim 100%.
-      const hasEvidence = measuredSamples > 0;
+      const hasEvidence = hasSamples;
       const uptimePct = hasEvidence && totalPeriodSeconds > 0
         ? Math.max(0, Math.min(100, parseFloat((((totalPeriodSeconds - downtimeTotal) / totalPeriodSeconds) * 100).toFixed(1))))
         : null;
@@ -611,46 +647,14 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   }
 
   filterDowntimeLog() {
-    const now = new Date();
-    let startDate: Date;
-    let endDate: Date = now;
+    const window = this.periodWindow();
 
-    switch (this.selectedPeriod) {
-      case 'harian':
-        startDate = new Date(now);
-        startDate.setHours(0, 0, 0, 0);
-        break;
-      case 'mingguan':
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - 7);
-        break;
-      case 'bulanan':
-        startDate = new Date(now);
-        startDate.setMonth(now.getMonth() - 1);
-        break;
-      case 'tahunan':
-        startDate = new Date(now);
-        startDate.setFullYear(now.getFullYear() - 1);
-        break;
-      case 'custom':
-        if (this.startDate && this.endDate) {
-          startDate = new Date(this.startDate);
-          startDate.setHours(0, 0, 0, 0);
-          endDate = new Date(this.endDate);
-          endDate.setHours(23, 59, 59, 999);
-        } else {
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - 1);
-        }
-        break;
-      default:
-        startDate = new Date(now);
-        startDate.setDate(now.getDate() - 1);
-    }
-
-    // Filter berdasarkan site dan periode
+    // Filter berdasarkan site dan periode — batas yang SAMA dengan ringkasan
+    // uptime, supaya keduanya tidak bisa menampilkan periode yang berbeda.
     this.downtimeLog = this.allDowntimeEvents
-      .filter(event => event.site === this.selectedSite && event.timestamp >= startDate && event.timestamp <= endDate)
+      .filter(event => event.site === this.selectedSite
+        && event.timestamp >= window.start
+        && event.timestamp <= window.end)
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
