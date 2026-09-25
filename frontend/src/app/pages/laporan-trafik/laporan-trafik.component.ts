@@ -51,6 +51,8 @@ interface DowntimeEvent {
   /** Sebab yang dicatat backend, ditampilkan sebagai tooltip. */
   reason?: string;
   start: string;
+  /** ISO waktu pulih. Dipakai predikat tumpang tindih, sama seperti ringkasan. */
+  endTime?: string;
   duration: string;
   color: string;
   end: string;
@@ -219,6 +221,9 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
             kind: e.kind === 'interface-down' ? 'interface-down' : 'unreachable',
             reason: e.reason || '',
             start: e.start,
+            // ISO waktu pulih dipakai predikat tumpang tindih di log, sama
+            // seperti ringkasan uptime — bukan sekadar waktu mulai.
+            endTime: e.endTimeIso || undefined,
             duration: e.duration,
             color: e.color || '#C4442E',
             end: e.end || '—',
@@ -393,32 +398,17 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.updateQueryParams();
   }
 
+  /**
+   * Isi input tanggal dari jendela periode yang sama dengan grafik, ekspor,
+   * ringkasan, dan log. Sebelumnya fungsi ini menghitung sendiri, sehingga untuk
+   * `bulanan` dan `tahunan` grafik dan tabel menampilkan himpunan hari berbeda.
+   */
   setDefaultDateRange() {
-    const now = new Date();
+    if (this.selectedPeriod === 'custom') return;
 
-    switch (this.selectedPeriod) {
-      case 'harian':
-        this.startDate = this.formatDateForInput(now);
-        this.endDate = this.formatDateForInput(now);
-        break;
-      case 'mingguan':
-        const weekStart = new Date(now);
-        weekStart.setDate(now.getDate() - 6);
-        this.startDate = this.formatDateForInput(weekStart);
-        this.endDate = this.formatDateForInput(now);
-        break;
-      case 'bulanan':
-        const monthStart = new Date(now);
-        monthStart.setDate(now.getDate() - 29);
-        this.startDate = this.formatDateForInput(monthStart);
-        this.endDate = this.formatDateForInput(now);
-        break;
-      case 'tahunan':
-        const yearStart = new Date(now.getFullYear(), 0, 1);
-        this.startDate = this.formatDateForInput(yearStart);
-        this.endDate = this.formatDateForInput(now);
-        break;
-    }
+    const window = this.periodWindow();
+    this.startDate = window.startDate;
+    this.endDate = window.endDate;
   }
 
   formatDateForInput(date: Date): string {
@@ -481,53 +471,67 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   /**
    * Satu jendela periode untuk seluruh halaman — pemilihan event, probe sample,
-   * penyebut uptime, dan log memakai batas yang sama supaya tidak bisa berbeda
-   * pendapat. Batasnya kalender: awal 00:00 sampai akhir 23:59:59 waktu lokal.
+   * penyebut uptime, input tanggal, grafik, ekspor, dan log memakai batas yang
+   * sama supaya tidak bisa berbeda pendapat.
+   *
+   * Dihitung dari kalender **WIB** (Asia/Makassar, UTC+8), sama seperti endpoint
+   * riwayat yang menafsirkan `startDate`/`endDate` sebagai hari WIB. Memakai
+   * kalender browser membuat rentang kustom bergeser sehari di mesin non-WIB.
    */
-  private periodWindow(): { start: Date; end: Date } {
+  private periodWindow(): { start: Date; end: Date; startDate: string; endDate: string } {
+    const WIB_OFFSET_MS = 8 * 60 * 60 * 1000;
+    const DAY_MS = 24 * 60 * 60 * 1000;
+
+    const wibDayStart = (y: number, m: number, d: number) => new Date(Date.UTC(y, m, d) - WIB_OFFSET_MS);
+    const wibParts = (date: Date) => {
+      const shifted = new Date(date.getTime() + WIB_OFFSET_MS);
+      return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth(), d: shifted.getUTCDate() };
+    };
+    const iso = (date: Date) => {
+      const p = wibParts(date);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${p.y}-${pad(p.m + 1)}-${pad(p.d)}`;
+    };
+
     const now = new Date();
-    const start = new Date(now);
-    const end = new Date(now);
+    const today = wibParts(now);
+    let startDay = wibDayStart(today.y, today.m, today.d);
 
     switch (this.selectedPeriod) {
       case 'harian':
-        start.setHours(0, 0, 0, 0);
         break;
       case 'mingguan':
-        start.setDate(start.getDate() - 6);
-        start.setHours(0, 0, 0, 0);
+        // "7 hari terakhir" termasuk hari ini.
+        startDay = new Date(startDay.getTime() - 6 * DAY_MS);
         break;
       case 'bulanan':
-        start.setMonth(start.getMonth() - 1);
-        start.setHours(0, 0, 0, 0);
+        // "30 hari terakhir" termasuk hari ini.
+        startDay = new Date(startDay.getTime() - 29 * DAY_MS);
         break;
       case 'tahunan':
-        start.setFullYear(start.getFullYear() - 1);
-        start.setHours(0, 0, 0, 0);
+        // Labelnya "Tahun ini", jadi mulai 1 Januari tahun berjalan.
+        startDay = wibDayStart(today.y, 0, 1);
         break;
       case 'custom':
         if (this.startDate && this.endDate) {
-          start.setTime(new Date(this.startDate).getTime());
-          start.setHours(0, 0, 0, 0);
-          end.setTime(new Date(this.endDate).getTime());
-          end.setHours(23, 59, 59, 999);
-        } else {
-          start.setDate(start.getDate() - 1);
-          start.setHours(0, 0, 0, 0);
+          const [sy, sm, sd] = this.startDate.split('-').map(Number);
+          const [ey, em, ed] = this.endDate.split('-').map(Number);
+          const customStart = wibDayStart(sy, (sm || 1) - 1, sd || 1);
+          const customEndDay = wibDayStart(ey, (em || 1) - 1, ed || 1);
+          return {
+            start: customStart,
+            end: new Date(customEndDay.getTime() + DAY_MS - 1),
+            startDate: this.startDate,
+            endDate: this.endDate
+          };
         }
+        startDay = new Date(startDay.getTime() - DAY_MS);
         break;
       default:
-        start.setDate(start.getDate() - 1);
-        start.setHours(0, 0, 0, 0);
+        startDay = new Date(startDay.getTime() - DAY_MS);
     }
 
-    return { start, end };
-  }
-
-  /** `YYYY-MM-DD` waktu lokal — format tanggal yang dipakai endpoint riwayat. */
-  private isoDate(date: Date): string {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    return { start: startDay, end: now, startDate: iso(startDay), endDate: iso(now) };
   }
 
   async generateUptimeData() {
@@ -589,8 +593,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       // duplikatnya, lalu diurutkan hanya untuk satu angka.
       try {
         const params = new URLSearchParams({ site, count: '1' });
-        params.set('startDate', this.isoDate(window.start));
-        params.set('endDate', this.isoDate(window.end));
+        params.set('startDate', window.startDate);
+        params.set('endDate', window.endDate);
         const res = await this.api.fetch(`/api/router/history?${params.toString()}`);
         if (res.ok) {
           const data = await res.json();
@@ -649,12 +653,24 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   filterDowntimeLog() {
     const window = this.periodWindow();
 
-    // Filter berdasarkan site dan periode — batas yang SAMA dengan ringkasan
-    // uptime, supaya keduanya tidak bisa menampilkan periode yang berbeda.
+    // Predikat yang SAMA dengan ringkasan uptime: event yang tumpang tindih
+    // dengan jendela. Menyaring berdasarkan waktu MULAI saja membuat gangguan
+    // yang melewati tengah malam menurunkan uptime tanpa muncul di log — dan
+    // event yang baru mulai di ujung jendela tampil dengan durasi nol.
     this.downtimeLog = this.allDowntimeEvents
-      .filter(event => event.site === this.selectedSite
-        && event.timestamp >= window.start
-        && event.timestamp <= window.end)
+      .filter(event => event.site === this.selectedSite)
+      .filter(event => {
+        const start = event.timestamp.getTime();
+        const end = event.endTime ? new Date(event.endTime).getTime() : window.end.getTime();
+        return end >= window.start.getTime() && start <= window.end.getTime();
+      })
+      .map(event => {
+        // Event yang belum pulih masih berdurasi '0s' dari backend. Tampilkan
+        // berapa lama sudah berjalan sampai ujung jendela, bukan nol.
+        if (event.endTime) return event;
+        const seconds = Math.max(0, (window.end.getTime() - event.timestamp.getTime()) / 1000);
+        return { ...event, duration: this.formatDurationText(seconds) };
+      })
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 

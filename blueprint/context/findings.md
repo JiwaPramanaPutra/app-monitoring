@@ -24,6 +24,7 @@ Re-confirmed at target 3db1301 (2026-09-25, independent automatic review): this 
 Re-examined at target 48202b5 (2026-09-25, independent automatic review): `npm run verify` ran 79/79 backend tests green, including `redact.test.js`. `auth.js`/`project-utils.js` and their suites remain outside the reviewed delta, so the status stays `fixed` (P3).
 Re-confirmed at target fbc777d (2026-09-25, independent automatic review): this pass's `npm run verify` ran all 79 backend tests green (`auth`, `redact`, `project-utils`, `laporan-utils`, `device-identity`, `router-errors`, `router-interfaces`, `traffic-response`). `backend/services/redact.js` and `backend/test/redact.test.js` are inside this delta; `backend/services/auth.js` and `project-utils.js` and their suites remain outside it, so closure still belongs to a full-project or `backend/`-scoped pass. Status stays `fixed` (P3).
 
+
 ### F-25 [P2] unverified - Restart-policy starts can still bypass Mongo readiness and silently use JSON storage
 
 **File:** docker-compose.yml:4,15,24-28; backend/server.js:27-33,73
@@ -38,6 +39,7 @@ Re-examined at target fbc777d (2026-09-25): the initial connect is still `mongoo
 Re-examined at target 12c994b (2026-09-25): `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`; `docker-compose.yml` is outside this delta. Still `unverified`; no Docker available.
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): unchanged - `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`. Still `unverified`; no Docker available.
 
+
 ### F-26 [P3] open - Backend package metadata still declares the ISC license
 
 **File:** backend/package.json:15; README.md:128; LICENSE:1
@@ -49,6 +51,7 @@ Re-confirmed at target 6e9eaca (2026-09-25): `backend/package.json`, `README.md`
 Re-confirmed at target 3db1301 (2026-09-25): `backend/package.json:15` still declares `"license": "ISC"`; the file is outside this delta. Status stays `open` (P3).
 Re-confirmed at target 48202b5 (2026-09-25): `backend/package.json:15` still declares `"license": "ISC"` and the file is outside this delta. Status stays `open` (P3).
 Re-confirmed at target fbc777d (2026-09-25): `backend/package.json:15` still declares `"license": "ISC"` and the file is outside this delta. Status stays `open` (P3).
+
 
 ### F-30 [P3] fixed - Bridge credential tests assert an input shape the app cannot produce; the affected component workflows are untested
 
@@ -63,6 +66,7 @@ Re-examined at target 3db1301 (2026-09-25): the helper half is still repaired an
 Re-examined at target 48202b5 (2026-09-25): `router-traffic-link.spec.ts` still passes (41 tests) and there is still no `monitoring.component.spec.ts` or component harness, so the save/edit/delete and bridge paths remain covered only by reading; new F-41 and F-42 land in exactly that untested surface. Status stays `fixed` (P3).
 Re-examined at target fbc777d (2026-09-25): `router-traffic-link.spec.ts` now passes 44 tests (the new Mongo `_id` cases) and no `monitoring.component.spec.ts` or component harness exists (the vitest run lists seven spec files, none for the component), so `saveDevice`, `saveEditedDevice`, `confirmDelete`, `editStopsTraffic`, and `bridgeHasStoredCreds` remain covered only by reading. The F-41 repair itself is additionally pinned by helper tests; the F-42 component getter is not. Status stays `fixed` (P3).
 Re-examined at target fba8f1c (2026-09-25, independent automatic review): the helper-fixture half is still repaired and green (44 tests in this pass's verify). The coverage half is unchanged: no `monitoring.component.spec.ts` or component harness exists, and this delta's new component logic (`onEditSiteLocationChange` and the two stale-response guards) is covered only by reading; F-73/F-74 are additional leads in that surface. Status stays `fixed` (P3).
+
 
 ### F-31 [P3] unverified - Per-interface monitor probes add up to (timeout x running interfaces) to the interface-list request
 
@@ -79,6 +83,7 @@ Re-examined at target fbc777d (2026-09-25): `listRouterInterfaces` (`backend/ser
 Re-examined at target 12c994b (2026-09-25): the loop is now `backend/server.js:352-365`; still one sequential `monitor-traffic once` per running interface with only the per-interface `timeout` and no overall deadline. Still `unverified`; no router available to measure.
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `listRouterInterfaces` (`backend/server.js:336-373`) and its loop (`:352-365`) are unchanged; the collector's new `isInterfaceRunning` adds one more router round-trip on zero-traffic polls but does not change this endpoint. Still `unverified`; no router available to measure.
 
+
 ### F-34 [P3] open - The named-site `resolveRouterConfig` isolation rule has no committed test
 
 **File:** backend/server.js:70-113
@@ -91,6 +96,7 @@ Re-examined at target 48202b5 (2026-09-25): `resolveRouterConfig`/`findProjectSi
 Re-examined at target fbc777d (2026-09-25): `resolveRouterConfig`/`findProjectSite` (`backend/server.js:71-114`) are still module-private and the new suites cover `router-interfaces`, `router-errors`, `traffic-response`, and `device-identity` only, not the three resolution directions. Status stays `open` (P3).
 Re-examined at target 12c994b (2026-09-25): `resolveRouterConfig`/`findProjectSite` (`backend/server.js:70-114`) are still module-private and none of the ten backend suites covers the named-site-with-config, named-site-without-config, or unnamed-site/env directions. Status stays `open` (P3).
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `resolveRouterConfig` (`backend/server.js:71`) and `findProjectSite` (`:102`) are still module-private and no test under `backend/test/` covers the three resolution directions. Status stays `open` (P3).
+
 
 ### F-38 [P3] open - Live-traffic path duplicates the new tested rate parser
 
@@ -106,6 +112,7 @@ Re-examined at target 12c994b (2026-09-25): unchanged — `fetchMikrotikTraffic`
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `backend/server.js:169-170` is unchanged, and the zero-rate guard at `:830` depends on those inline numbers: a malformed reply yields `NaN`, both `NaN === 0` comparisons are false, and the collector skips the link check and falls through to the traffic-flow `recordDowntimeEnd` (`:855`). The duplication is still the same class. Status stays `open` (P3).
 Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the inline `parseInt` is now `backend/server.js:170-171` and the collector's new idle gate at `:831` still reads those raw numbers. A non-numeric rate yields `NaN`, which the gate reads as "traffic flowing" and which makes `decideDowntimeAction`'s own idle test disagree (recorded as F-67). Status stays `open` (P3).
 
+
 ### F-45 [P3] open - `hasPassword` read-only marker can still be persisted for unmatched sites and on project create
 
 **File:** backend/services/redact.js:43-55; backend/server.js:1050-1053
@@ -115,6 +122,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the i
 **Resolution:**
 Re-examined at target 12c994b (2026-09-25): `preserveRouterPasswords` still `continue`s before the `delete site.routerConfig.hasPassword` when a site has no stored counterpart (`backend/services/redact.js:46,55`), and `POST /api/projects` (`backend/server.js:1118-1131`) still does not call the helper. Status stays `open` (P3).
 
+
 ### F-46 [P3] open - Project & Site form still defaults the router port to 8728 while every backend connection uses TLS
 
 **File:** frontend/src/app/pages/project-site/project-site.component.ts:34,139,142; backend/server.js:145-151,242-248,341-347
@@ -122,6 +130,7 @@ Re-examined at target 12c994b (2026-09-25): `preserveRouterPasswords` still `con
 **Why it matters:** Every backend RouterOS connection passes `tls: MIKROTIK_TLS_OPTIONS` (`backend/server.js:151,248,347`), so a `routerConfig` saved from the Project & Site form with its default port 8728 (plain api) can never connect; `resolveRouterConfig` also falls back to 8728 when the stored port is missing (`server.js:83`). This is the same wrong-default class batch 2 removed from the device bridge form (F-29), still present in the pre-existing Project & Site form (outside this delta's touched files, recorded per the identity/default sweep). The user only learns from the traffic widget's connection-failure message.
 **Suggested fix:** Default the site form's port to 8729 (api-ssl), matching the device bridge form. This changes a shipped default, so it needs the user's explicit decision and is not an automatic repair.
 **Resolution:**
+
 
 ### F-49 [P3] open - Storage wiring for the new device-key helpers has no committed test, so the wrong-record path is invisible to `npm run verify`
 
@@ -132,6 +141,7 @@ Re-examined at target 12c994b (2026-09-25): `preserveRouterPasswords` still `con
 **Resolution:** Sebagian tertangani 2026-09-25. `backend/test/storage-devices.test.js` menguji kontrak `saveLocalDevice`/`updateLocalDevice`/`deleteLocalDevice` (termasuk kasus F-47 dan F-44), tetapi **wiring di `server.js` masih belum diuji otomatis** karena endpoint Express perlu server hidup atau harness HTTP. Baris `newDevice = storage.saveLocalDevice(req.body)` sudah diberi komentar alasan, tapi regresinya belum terkunci test. Status tetap `open`.
 Re-examined at target 5c94633 (2026-09-25, independent automatic review): `backend/test/storage-devices.test.js` now locks the layer the finding pointed at - the returned record has a findable `_id`, a colliding client key is re-keyed, and delete/update touch exactly one record - and it ran green in this pass's verify. The `server.js:1147` wiring itself is still not exercised by any automated test (the endpoint needs a live server or HTTP harness), so a recurrence of "POST discards the return value" remains invisible to `npm run verify`. Status stays `open` (P3).
 Re-examined at target 37c6f44 (2026-09-25, independent automatic review): unchanged. `backend/test/storage-devices.test.js` still exercises only `storage.js`, and `backend/server.js:1147` is still not exercised by any automated test, so the POST wiring remains invisible to `npm run verify`. Status stays `open` (P3).
+
 
 ### F-50 [P3] open - Local project storage still uses the match-`_id`-or-`id` predicate and never enforces key uniqueness (identity-sweep remainder)
 
@@ -144,6 +154,7 @@ Re-examined at target 5c94633 (2026-09-25, independent automatic review): `saveL
 Re-examined at target 37c6f44 (2026-09-25, independent automatic review): unchanged - the project operations at `backend/storage.js:306-331` still match `_id` or `id` with no uniqueness check; this delta only touches the device operations. Status stays `open` (P3).
 Re-examined at target 12c994b (2026-09-25): the local project operations moved to `backend/storage.js:317-338` but still match `_id` or `id` with no uniqueness check; this delta only adds `kind` to the downtime ledger. Status stays `open` (P3).
 
+
 ### F-51 [P3] open - `updateLocalDevice` can still store a duplicate `id`, so the "duplicate keys are never stored" claim holds only for create
 
 **File:** backend/storage.js:282-289; backend/server.js:1155-1170
@@ -153,6 +164,7 @@ Re-examined at target 12c994b (2026-09-25): the local project operations moved t
 **Resolution:** Re-examined at target 37c6f44 (2026-09-25, independent automatic review): `updateLocalDevice` (`backend/storage.js:282-289`) still merges a client-supplied `id` with no uniqueness check. The create path has the same gap when a request supplies a free `_id` together with an already-used `id`: `saveLocalDevice` keys only off `device._id || device.id` (`:275-276`), so the stored record can carry a duplicate legacy `id`. `_id` stays unique in both paths, so the ambiguity needs an `id`-only lookup. Status stays `open` (P3).
 Re-examined at target 12c994b (2026-09-25): `updateLocalDevice` is now `backend/storage.js:293-300` and still merges a client-supplied `id` with no uniqueness check; `saveLocalDevice` (`:283-291`) still keys only off `device._id || device.id`. Status stays `open` (P3).
 
+
 ### F-52 [P3] open - `deviceKey()` is the single identity source, but twelve `_id || id` comparisons remain in the component
 
 **File:** frontend/src/app/pages/monitoring/monitoring.component.ts:250,252,719,742,767,771,950-951,965,978,1000,1006,1027; frontend/src/app/shared/device-identity.ts:29-35
@@ -160,6 +172,7 @@ Re-examined at target 12c994b (2026-09-25): `updateLocalDevice` is now `backend/
 **Why it matters:** The spec's repair says `deviceKey()` exists so the `_id || id` pattern is "tidak lagi ditulis ulang dan tidak bisa menyimpang", but only the template (`monitoring.component.html:202,213`) and `toggleDropdown` use it. The remaining comparisons inline `(d._id || d.id)` and compare raw values without the helper's String normalization or null handling. All current call sites behave correctly for reachable records (the preference order matches), so this is not a live defect; it is the same duplicated identity pattern that produced F-39/F-41/F-43, and a future edit copied from these lines can reintroduce the undefined-key bug the helper set out to end.
 **Suggested fix:** Compare through the helper on both sides (for example `deviceKey(d) === deviceKey(dev)`) at those call sites, or document why the remaining sites intentionally bypass it. No behavior decision needed.
 **Resolution:** Re-examined at target 37c6f44 (2026-09-25, independent automatic review): `deviceKey()` is still used only by `monitoring.component.html:202,213` and `toggleDropdown`; the inline `(d._id || d.id)` comparisons remain at `monitoring.component.ts:250,252,719,742,767,771,950-951,965,978,1000,1006,1027`, unchanged by this delta. Status stays `open` (P3).
+
 
 ### F-54 [P3] open - Local-mode device responses call a client-controlled `toObject` property
 
@@ -169,6 +182,7 @@ Re-examined at target 12c994b (2026-09-25): `updateLocalDevice` is now `backend/
 **Suggested fix:** Test the callable at both sites: `typeof newDevice.toObject === 'function' ? newDevice.toObject() : newDevice`. No current requirement is lost.
 **Resolution:**
 Re-examined at target 12c994b (2026-09-25): the truthiness guards are now `backend/server.js:1222,1239` and still read `newDevice.toObject ? newDevice.toObject() : newDevice` / `updatedDevice && updatedDevice.toObject ? ...`; the `typeof` fix was not applied. Status stays `open` (P3).
+
 
 ### F-61 [P3] open - The new merge and classification logic have no committed tests
 
@@ -181,6 +195,7 @@ Re-examined at target dd43d25 (2026-09-25, independent automatic review): the li
 Re-examined at target 352df5b (2026-09-25, independent automatic review): the suite is now 12 tests and the F-66 case was corrected, but the collector wiring - the `isIdleSample` gate and the `ongoing ? (ongoing.kind || 'unreachable') : null` normalization (`backend/server.js:831-845`) - still has no automated coverage, and the new legacy test duplicates the F-55 case instead of exercising it; recorded as F-72. The `getRawSamples` merge (`backend/server.js:559-600`) is unchanged by this delta and still untested. Status stays `open` (P3).
 Re-examined at target 46e3bac (2026-09-25, independent automatic review): still no suite imports `backend/server.js`; this pass's `npm run verify` ran 116 backend tests, none covering `getRawSamples` (`backend/server.js:605-657`) or the new count path (`:556-603, 677-688`). The delta added more of the same class of untested logic; recorded as F-77 together with the frontend window arithmetic. Status stays `open` (P3).
 
+
 ### F-62 [P3] open - `aggregateSamples` omits empty buckets for `mingguan`, `bulanan`, and `custom`, so the gap marker never engages there
 
 **File:** backend/server.js:504-546; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:629-632, 648-688
@@ -190,6 +205,7 @@ Re-examined at target 46e3bac (2026-09-25, independent automatic review): still 
 **Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `aggregateSamples` still emits zero-sample slots only for `harian`/`tahunan` (`backend/server.js:534-545`), so `mingguan`, `bulanan`, and `custom` return only keys that had samples and the gap marker stays inert there (`frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:639-641`). Status stays `open` (P3).
 Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): unchanged - the zero-slot branch is still gated on `['harian', 'tahunan'].includes(period)` (`backend/server.js:535-545`), and the frontend gap logic keys off the `samples` field that every emitted bucket carries (`:533`). Status stays `open` (P3).
 
+
 ### F-63 [P3] open - Hand-editing `backend/data/traffic_history.json` while the backend runs is silently clobbered
 
 **File:** backend/storage.js:108-122 (`scheduleSaveTraffic`); backend/server.js:819-824, 861 (collector writes every 6 s)
@@ -197,6 +213,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Why it matters:** The running process owns the JSON file: every `recordTrafficSample` schedules a full rewrite two seconds later and the collector adds a sample every 6 s, so an external edit is overwritten within seconds. The builder hit this during Step 4, and the file was rewritten again during this review (mtime moved to 2026-09-25T10:02:34Z while a backend dev server on port 3000 was running). The spec's own data steps edit this file, so the hazard is likely to recur on any repeat or re-run.
 **Suggested fix:** Document and enforce "stop the backend before editing `backend/data/*.json`" in the data steps, or move site renames behind a one-off script that mutates through the app/DB. No product behavior change needed.
 **Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): a backend process is running during this review and `backend/data/traffic_history.json` still receives a sample about every 6 seconds (newest observed `2026-09-25T10:19:54.518Z`, 3.5 MB), and both `scheduleSaveTraffic` (`backend/storage.js:108-122`) and `saveDowntimeEvents` (`:124-130`) still rewrite the whole file from memory, so an external edit is clobbered. Status stays `open` (P3).
+
 
 ### F-69 [P2] fixed - The hover tooltip is clipped at the left edge by the chart's `overflow-x:auto` wrapper
 
@@ -206,6 +223,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Suggested fix:** Mirror the existing right-edge `flip` with a left guard: when the point is close enough to 0 that `left% * chartWidth < tooltipWidth / 2`, place the box with `translateX(0)` (or clamp its left offset) instead of `translateX(-50%)`; place the single-bucket case inside the chart. Keep the same positioning context so the box still follows the cursor.
 **Resolution:** Repaired 2026-09-25. Posisi tooltip memakai tiga mode perataan (`alignFor`): menempel kiri pada `left < 12`, membalik ke kiri pada `left > 75`, sisanya di tengah. Titik-titik awal tidak lagi terpotong pembungkus yang `overflow-x: auto`. Aritmetikanya murni dan teruji di `shared/chart-math.ts`.
 
+
 ### F-70 [P3] fixed - The hover marker dots render as wide flat ellipses because `preserveAspectRatio="none"` scales the circle radius with the chart width
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.html:135,167-172
@@ -213,6 +231,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Why it matters:** The SVG uses `viewBox="0 0 100 150"` with `preserveAspectRatio="none"`, so x scales by `width/100` and y by `150/150 = 1`. The marker circles use `r="2.5"` in user units, which renders as `rx = 2.5 * width/100` (roughly 25-28px at the current ~1,000-1,100px chart) and `ry = 2.5px` - a ~50x5px ellipse, not the "titik di posisi Tx/Rx" the spec promises. `vector-effect="non-scaling-stroke"` protects only the stroke, not the radius. The dot centers (x and y) are correct and match the paths, so this is a visual-shape defect, not a data-position one. At `left = 0`/`100` the ellipse also paints half outside the SVG box, clipped by the scroll container on the left.
 **Suggested fix:** Draw the marker at a fixed screen size - for example two small absolutely positioned dots in the existing overlay using the same `left` percentage and a pixel `top` derived from `txY`/`rxY`, or bind `rx`/`ry` so the on-screen shape is round (`ry` fixed, `rx = ry * 150 / chartWidthPx`). Visual-only change.
 **Resolution:** Repaired 2026-09-25. Penanda dipindah dari SVG ke overlay HTML dengan ukuran tetap (7px, `border-radius: 50%`), jadi titiknya bulat di layar berapa pun lebarnya — `preserveAspectRatio="none"` tidak lagi memipihkannya. Garis penanda tetap putus-putus.
+
 
 ### F-71 [P2] fixed - Stopping the "titik tanpa data" count at the last sample also hides real gaps after it and makes a fully empty day report 0
 
@@ -222,6 +241,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Suggested fix:** Count `samples === 0` buckets up to the bucket that contains the current time instead of up to the last sample - for `harian` the current hour and for `tahunan` the current month, compared against the same WIB labels the backend emits. That keeps F-68's no-future-false-positives goal and restores the outage/empty-day signal; alternatively stop emitting future slots in `aggregateSamples`. This refines the shipped badge behavior, so the user may also choose to accept the current trade-off.
 **Resolution:** Repaired 2026-09-25. Batas hitung celah kini `missingLimit(lastIndexWithData, currentSlotIndex)` — yang LEBIH JAUH antara sample terakhir dan slot waktu "sekarang". Jam/bulan yang belum lewat tetap dikecualikan, tapi celah setelah sample terakhir (gangguan siang ini) dan hari yang bolong total kembali terhitung. `currentSlotIndex()` mengenali label jam untuk `harian` dan label bulan untuk `tahunan`; periode lain jatuh ke perilaku lama karena tidak punya slot kosong.
 
+
 ### F-72 [P3] fixed - The delta's new logic has no test where it can regress: the F-66 caller normalization and the chart hover/gap arithmetic
 
 **File:** backend/test/downtime-classify.test.js:44-62; backend/server.js:844; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:657-670,736-776
@@ -229,6 +249,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Why it matters:** Two new behaviors are invisible to `npm run verify`. (1) The rewritten legacy test (`backend/test/downtime-classify.test.js:53-62`) passes `ongoingKind: 'unreachable'` - the same input and expectation as the pre-existing F-55 test (`:44-51`) - so it adds no coverage and cannot catch the regression it is named after. The actual normalization lives in `backend/server.js:844` (`ongoing ? (ongoing.kind || 'unreachable') : null`); no test exercises it (the `server.js` module starts an HTTP server, so nothing imports it), and deleting that expression would still pass the suite - exactly the false confidence F-66 described. (2) `chartMissingBuckets`'s edge cases (all-empty, gap before/after the last sample), the cursor-to-index mapping (`Math.round(ratio * (n - 1))`, `left`, `flip`), and `formatChartValue` are pure arithmetic but none of the seven frontend specs imports or covers them. The project already tests extracted pure helpers (`shared/device-identity.spec.ts`, `shared/router-traffic-link.spec.ts`), so both are coverable without a component harness.
 **Suggested fix:** Move the caller's kind normalization into `downtime-classify.js` (for example `normalizeOngoingKind(ongoing)`) and test it directly, replacing the duplicate case. Extract the chart index/format/count arithmetic into a small exported helper (for example `pages/laporan-trafik/chart-hover.ts`) and cover the listed cases with vitest. No component harness required.
 **Resolution:** Repaired 2026-09-25. Aritmetika grafik diekstrak ke `frontend/src/app/shared/chart-math.ts` (`indexFromRatio`, `leftPercent`, `alignFor`, `lastIndexWithData`, `countMissing`, `missingLimit`) dengan 20 test vitest, termasuk kasus grafik satu titik, kursor di luar kotak, dan batas hitung celah. Test "legacy" yang duplikat sudah diganti dua kasus yang benar-benar berbeda (event lama ternormalisasi vs tidak ada event).
+
 
 ### F-73 [P3] unverified - The 30-second device-status refresh applies its response without re-checking the selected site
 
@@ -238,6 +259,7 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Suggested fix:** Use the same capture-and-bail guard as the repaired sibling paths (`const site = this.selectedSite` before the request, `if (site !== this.selectedSite) return;` before the merge). No behavior decision needed.
 **Resolution:**
 
+
 ### F-74 [P3] unverified - Same-site traffic responses are not sequenced, so an older slow response can overwrite a newer one
 
 **File:** frontend/src/app/pages/monitoring/monitoring.component.ts:270-333, 335-344
@@ -246,21 +268,24 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Suggested fix:** Tag each request with a monotonically increasing sequence (or capture a request timestamp), ignore resolutions older than the last applied one, and keep the sample ordering consistent in `updateTrafficMetrics`. No behavior decision needed.
 **Resolution:**
 
-### F-75 [P2] open - The downtime log still selects by event start, so an outage crossing the window start is counted in uptime but missing from the log
+
+### F-75 [P2] fixed - The downtime log still selects by event start, so an outage crossing the window start is counted in uptime but missing from the log
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:555-568, 649-657
 **Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** The F-65 repair made the summary select events by interval overlap (`eventEnd >= window.start && eventStart <= window.end`, `:555-568`) and clip each duration to the window, but `filterDowntimeLog` (`:654-657`) still keeps only events whose `timestamp` — the event start (`:226`) — lies inside the window. An outage that begins before the window and ends inside it is therefore counted by `downtimeTotal` and lowers the uptime percentage while the log below the table shows nothing. Verified predicate arithmetic for window 2 Sept 00:00–23:59:59 and event 1 Sept 23:00 → 2 Sept 01:00: the summary overlaps and counts 3600 clipped seconds (`summary overlap: true clippedSec: 3600`), the log predicate is false (`log start-in-window: false`). The inverse exists too: an open event that starts inside the window appears in the log but contributes zero downtime because `if (!ev.end) continue` (`:562`) skips it. The spec's Step 3 done-when is "angkanya konsisten dengan log"; with calendar-day windows, a midnight-crossing outage is the common boundary case. The table still shows the downtime total, so the impact is a page that contradicts itself, not lost data. Confirmed by reading and predicate arithmetic; no browser repro.
 **Suggested fix:** Carry `startTimeIso`/`endTimeIso` into `DowntimeEvent` (the backend response already has both) and filter the log by the same overlap predicate the summary uses (`(endIso ?? window.end) >= window.start && startIso <= window.end`) instead of start-only. The log shows the full event duration while the summary shows the clipped part; note the clipping in the row tooltip or leave the full duration, no data decision needed.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. `DowntimeEvent` membawa `endTime` dari `endTimeIso`, dan `filterDowntimeLog` memakai predikat TUMPANG TINDIH yang sama dengan ringkasan — bukan lagi menyaring berdasarkan waktu mulai. Gangguan yang melewati tengah malam kini muncul di log kedua hari yang bersinggungan, dan event yang belum pulih menampilkan durasi berjalan sampai ujung jendela, bukan `0s`.
 
-### F-76 [P3] open - The period window is built from the browser-local calendar while the API interprets the same dates as +07:00
+
+### F-76 [P3] fixed - The period window is built from the browser-local calendar while the API interprets the same dates as +07:00
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:487-531; backend/server.js:561-566
 **Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** `periodWindow()` builds its bounds with `setHours(0,0,0,0)` / `setHours(23,59,59,999)` in the browser's timezone and `isoDate()` (`:528-531`) formats them back to `YYYY-MM-DD`, while `rangeBounds` re-parses those strings as `+07:00`. For a WIB browser the two agree exactly. For any other zone they diverge: with `TZ=America/New_York`, `new Date('2026-09-01')` + `setHours(0,0,0,0)` is 31 Aug local and `isoDate` sends `2026-08-31`, expanding the custom range by one day (measured: `TZ=New York custom window start: Mon Aug 31 2026 … -> isoDate 2026-08-31`); east of WIB (for example UTC+9) the date is preserved but the event/log window starts 2 h before the backend probe range. Preset windows have the same divergence. The backend is deliberately WIB everywhere (`aggregateSamples` uses `toWIB`), so this is only reachable for a browser whose clock is not WIB, but then the summary/log and the probe/chart can cover shifted periods.
 **Suggested fix:** Make the WIB calendar the single source: build the window from WIB-offset instants (or send ISO instants and accept them in `rangeBounds`). At minimum, parse the date-input parts as a local calendar date (`new Date(y, m-1, d, 0, 0, 0, 0)`) instead of `new Date('YYYY-MM-DD')` so the west-of-UTC off-by-one day cannot happen, and document the WIB assumption. The parse fix needs no behavior decision; supporting non-WIB browsers changes contract and needs the user's call.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. `periodWindow()` membentuk batas dari kalender WIB (Asia/Makassar, UTC+8) dan mengembalikan tanggal `YYYY-MM-DD` WIB untuk dikirim ke endpoint riwayat, sehingga rentang kustom tidak lagi bergeser sehari di mesin non-WIB. `isoDate()` yang berbasis kalender browser dihapus karena tidak dipakai lagi.
+
 
 ### F-77 [P3] open - The count-mode, cap, and period-window logic added by this repair has no committed test
 
@@ -270,18 +295,21 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): uncha
 **Suggested fix:** Extract the window/overlap/clip arithmetic into a small exported module (for example `pages/laporan-trafik/period-window.ts`) and cover WIB boundaries, cross-boundary events, open events, and zero-length events with vitest, mirroring `chart-math.spec.ts`. For the backend, add a pure helper for the cap decision (see F-78) and cover the count guard; no new dependency needed.
 **Resolution:**
 
-### F-78 [P3] open - The cap warning fires at exactly SAMPLE_LIMIT and claims truncation that may not have happened
+
+### F-78 [P3] fixed - The cap warning fires at exactly SAMPLE_LIMIT and claims truncation that may not have happened
 
 **File:** backend/server.js:615-622
 **Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** `find(…).limit(SAMPLE_LIMIT)` returns at most 200,000 documents and the warning condition is `docs.length >= SAMPLE_LIMIT`, so a site whose in-range history is exactly 200,000 documents logs "batas 200000 sample tercapai, sisanya tidak dimuat" even though nothing was dropped. The warning is the only signal that history was truncated, so a false positive erodes the signal the F-58 repair added. The cap is reachable in normal operation: at the collector's 6-second cadence that is about 14 days of continuous history for one site.
 **Suggested fix:** Fetch `SAMPLE_LIMIT + 1` rows, serve the first `SAMPLE_LIMIT`, and warn only when the extra row is present (or confirm with the existing `countDocuments`). No behavior decision needed.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. `getRawSamples` mengambil `SAMPLE_LIMIT + 1` baris dan memperingatkan hanya bila baris ekstra itu benar-benar ada, sehingga riwayat yang pas 200.000 tidak lagi memunculkan klaim pemotongan yang tidak terjadi.
 
-### F-79 [P3] open - The chart and export still use a different period window than the summary and log
+
+### F-79 [P3] fixed - The chart and export still use a different period window than the summary and log
 
 **File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:239-246, 396-422, 487-525
 **Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** The F-65 repair gave the summary, probe, denominator, and log one window (`periodWindow`), but the history request and export still send `this.startDate`/`this.endDate` set by `setDefaultDateRange()`. For `bulanan` that is `now - 29 days` while `periodWindow` goes one calendar month back (on 25 Sept: 27 Aug vs 25 Aug); for `tahunan` it is 1 January of the current year while the summary uses a rolling year. The page can therefore claim uptime (and evidence) for days the chart and export do not cover - the same "two windows" class the repair removed elsewhere. It is a residual inconsistency, not a regression of the repaired paths, and no runtime data was needed to confirm the code paths.
 **Suggested fix:** Derive the chart/export dates from `periodWindow()` as well, or state in the component why the chart intentionally keeps its own preset range. Changing the shipped `tahunan` chart range (1 Jan to date → rolling year) removes current behavior and needs the user's decision.
-**Resolution:**
+**Resolution:** Repaired 2026-09-25. `setDefaultDateRange()` kini diturunkan dari `periodWindow()` yang sama dengan ringkasan, log, probe, dan grafik, sehingga input tanggal, grafik, dan tabel menampilkan himpunan hari yang identik untuk setiap periode. Sekaligus `bulanan` disamakan menjadi 30 hari terakhir dan `tahunan` menjadi 1 Januari tahun berjalan, sesuai labelnya di `getPeriodLabel()`.
+

@@ -614,10 +614,13 @@ async function getRawSamples(site, startDate, endDate) {
 
             const docs = await TrafficSample.find(mongoSampleQuery(site, startMs, endMs))
                 .sort({ timestamp: -1 })
-                .limit(SAMPLE_LIMIT)
+                .limit(SAMPLE_LIMIT + 1)
                 .lean();
 
-            if (docs.length >= SAMPLE_LIMIT) {
+            // Satu baris ekstra diambil supaya peringatan batas hanya muncul saat
+            // benar-benar terpotong — riwayat yang pas SAMPLE_LIMIT bukan pemotongan.
+            if (docs.length > SAMPLE_LIMIT) {
+                docs.length = SAMPLE_LIMIT;
                 console.warn(`[History] ${site}: batas ${SAMPLE_LIMIT} sample tercapai, sisanya tidak dimuat.`);
             }
 
