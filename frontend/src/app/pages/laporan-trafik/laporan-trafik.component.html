@@ -159,7 +159,47 @@
             <!-- Rx area and line -->
             <path [attr.d]="rxAreaPath" fill="url(#rxGrad)"/>
             <path [attr.d]="rxPath" fill="none" stroke="#C4442E" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+
+            <!-- Penanda titik yang sedang ditunjuk kursor -->
+            <g *ngIf="hoveredPoint">
+              <line [attr.x1]="hoveredPoint.left" y1="0" [attr.x2]="hoveredPoint.left" y2="130"
+                stroke="#9CA3AF" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
+              <circle *ngIf="hoveredPoint.samples > 0 && hoveredPoint.tx > 0"
+                [attr.cx]="hoveredPoint.left" [attr.cy]="hoveredPoint.txY" r="2.5" fill="#3E3A6B"
+                stroke="#fff" stroke-width="1" vector-effect="non-scaling-stroke"/>
+              <circle *ngIf="hoveredPoint.samples > 0 && hoveredPoint.rx > 0"
+                [attr.cx]="hoveredPoint.left" [attr.cy]="hoveredPoint.rxY" r="2.5" fill="#C4442E"
+                stroke="#fff" stroke-width="1" vector-effect="non-scaling-stroke"/>
+            </g>
           </svg>
+
+          <!-- Overlay kursor: memetakan posisi mouse ke titik terdekat -->
+          <div style="position:absolute;inset:0;cursor:crosshair;"
+            (mousemove)="onChartHover($event)" (mouseleave)="onChartLeave()"></div>
+
+          <!-- Keterangan Mbps titik yang sedang ditunjuk -->
+          <div *ngIf="hoveredPoint"
+            style="position:absolute;top:2px;z-index:5;pointer-events:none;background:#fff;border:0.5px solid var(--border);border-radius:6px;box-shadow:0 4px 14px rgba(0,0,0,0.10);padding:6px 9px;font-size:11px;white-space:nowrap;"
+            [style.left.%]="hoveredPoint.left"
+            [style.transform]="hoveredPoint.flip ? 'translateX(-100%)' : 'translateX(-50%)'">
+            <div class="mono" style="font-weight:500;margin-bottom:3px;">{{ hoveredPoint.label }}</div>
+            <ng-container *ngIf="hoveredPoint.samples > 0; else noData">
+              <div style="display:flex;align-items:center;gap:5px;">
+                <span style="width:8px;height:8px;background:#3E3A6B;display:inline-block;border-radius:2px;"></span>
+                <span>Tx</span>
+                <span class="mono">{{ formatChartValue(hoveredPoint.tx) }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;">
+                <span style="width:8px;height:8px;background:#C4442E;display:inline-block;border-radius:2px;"></span>
+                <span>Rx</span>
+                <span class="mono">{{ formatChartValue(hoveredPoint.rx) }}</span>
+              </div>
+              <div style="color:var(--muted);font-size:10px;margin-top:2px;">{{ hoveredPoint.samples }} sample</div>
+            </ng-container>
+            <ng-template #noData>
+              <div style="color:#B45309;font-size:10.5px;">Tidak ada data pada jam ini</div>
+            </ng-template>
+          </div>
         </div>
         
         <!-- X-axis labels (rendered completely) -->

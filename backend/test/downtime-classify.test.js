@@ -1,6 +1,26 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { decideDowntimeAction } = require('../services/downtime-classify');
+const { decideDowntimeAction, isIdleSample } = require('../services/downtime-classify');
+
+test('isIdleSample shares one definition of "no traffic" (fix F-67)', () => {
+    assert.strictEqual(isIdleSample(0, 0), true);
+    assert.strictEqual(isIdleSample('0', '0'), true);
+    assert.strictEqual(isIdleSample(NaN, undefined), true);
+    assert.strictEqual(isIdleSample(null, null), true);
+    assert.strictEqual(isIdleSample(1, 0), false);
+    assert.strictEqual(isIdleSample(0, 1), false);
+});
+
+test('the idle predicate and the ledger decision agree for malformed rates', () => {
+    // Collector memakai isIdleSample untuk memutuskan apakah status link perlu
+    // ditanyakan; fungsi ini memakainya untuk memutuskan ledger. Sebelum F-67
+    // diperbaiki keduanya berbeda pendapat untuk `NaN`.
+    assert.strictEqual(isIdleSample(NaN, NaN), true);
+    assert.deepStrictEqual(
+        decideDowntimeAction({ txBps: NaN, rxBps: NaN, running: false, ongoingKind: null }),
+        { closeOpen: false, open: 'interface-down' }
+    );
+});
 
 test('traffic flowing closes any open event and starts nothing', () => {
     assert.deepStrictEqual(
@@ -30,7 +50,18 @@ test('a link-down that starts while unreachable is open closes it first (fix F-5
     );
 });
 
-test('a legacy event without a kind is treated as unreachable (fix F-55 for old data)', () => {
+test('an open legacy event arrives normalized as unreachable (fix F-66)', () => {
+    // Pemanggil mengubah `kind` yang kosong menjadi 'unreachable' SEBELUM
+    // memanggil fungsi ini, karena `undefined`/`null` berarti "tidak ada kejadian
+    // terbuka". Tanpa normalisasi itu, link-down terverifikasi akan tenggelam di
+    // dalam event lama dan tidak pernah menurunkan uptime.
+    assert.deepStrictEqual(
+        decideDowntimeAction({ txBps: 0, rxBps: 0, running: false, ongoingKind: 'unreachable' }),
+        { closeOpen: true, open: 'interface-down' }
+    );
+});
+
+test('no ongoing event means nothing to close', () => {
     assert.deepStrictEqual(
         decideDowntimeAction({ txBps: 0, rxBps: 0, running: false, ongoingKind: null }),
         { closeOpen: false, open: 'interface-down' }

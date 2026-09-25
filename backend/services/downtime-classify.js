@@ -5,19 +5,29 @@
 // router sungguhan.
 
 /**
+ * Sample dianggap sepi bila kedua rate-nya nol. Nilai yang tidak bisa dibaca
+ * (`NaN`, `null`, `undefined`) juga dihitung sepi, dan predikat ini dipakai
+ * bersama oleh collector maupun `decideDowntimeAction` supaya keduanya tidak
+ * berbeda pendapat.
+ */
+function isIdleSample(txBps, rxBps) {
+    return (Number(txBps) || 0) === 0 && (Number(rxBps) || 0) === 0;
+}
+
+/**
  * @param {object} input
  * @param {number} input.txBps      bit/detik terukur
  * @param {number} input.rxBps      bit/detik terukur
  * @param {boolean|null} input.running  status link interface (null = tidak tahu)
- * @param {string|null} input.ongoingKind  `kind` kejadian yang sedang terbuka
+ * @param {string|null} input.ongoingKind  `kind` kejadian yang sedang terbuka.
+ *   `null` berarti TIDAK ADA kejadian terbuka; selain itu harus sudah berupa
+ *   string (pemanggil menormalkan `kind` yang kosong menjadi `'unreachable'`).
  * @returns {{ closeOpen: boolean, open: 'interface-down'|null }}
  */
 function decideDowntimeAction({ txBps, rxBps, running, ongoingKind } = {}) {
-    const idle = (Number(txBps) || 0) === 0 && (Number(rxBps) || 0) === 0;
+    const idle = isIdleSample(txBps, rxBps);
 
-    // Kejadian lama (sebelum klasifikasi) tidak punya `kind`; isinya kegagalan
-    // koneksi, jadi diperlakukan sebagai `unreachable`.
-    const ongoing = ongoingKind == null
+    const ongoing = (ongoingKind === null || ongoingKind === undefined)
         ? null
         : (ongoingKind === 'interface-down' ? 'interface-down' : 'unreachable');
 
@@ -39,4 +49,4 @@ function decideDowntimeAction({ txBps, rxBps, running, ongoingKind } = {}) {
     return { closeOpen: false, open: null };
 }
 
-module.exports = { decideDowntimeAction };
+module.exports = { decideDowntimeAction, isIdleSample };

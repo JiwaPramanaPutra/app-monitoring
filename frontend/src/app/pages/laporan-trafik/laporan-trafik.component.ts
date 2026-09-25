@@ -16,6 +16,20 @@ interface TrafficData {
   samples?: number;
 }
 
+/** Titik grafik yang sedang ditunjuk kursor, sudah siap dipakai template. */
+interface HoveredPoint {
+  label: string;
+  tx: number;
+  rx: number;
+  samples: number;
+  /** Posisi di viewBox SVG (x: 0-100, y: 0-150). */
+  left: number;
+  txY: number;
+  rxY: number;
+  /** Tooltip dibalik ke kiri saat titiknya di dekat tepi kanan. */
+  flip: boolean;
+}
+
 interface UptimeData {
   site: string;
   /** `null` = periode ini belum punya dasar pengukuran, jadi uptime tidak diklaim. */
@@ -80,6 +94,10 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   Math = Math;
 
   chartData: TrafficData[] = [];
+  /** Titik grafik yang sedang ditunjuk kursor (tooltip keterangan Mbps). */
+  hoveredPoint: HoveredPoint | null = null;
+  /** Skala maksimum grafik; dipakai bersama oleh path dan penanda kursor. */
+  chartMaxValue = 300;
   chartLabels: string[] = [];
   txCurrent = 0;
   txAverage = 0;
@@ -637,7 +655,18 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   /** Berapa titik grafik yang tidak punya sample sama sekali (jam yang datanya hilang). */
   get chartMissingBuckets(): number {
-    return this.chartData.filter(d => (d.samples || 0) === 0).length;
+    // Hanya sampai bucket terakhir yang PUNYA data: jam yang belum terjadi bukan
+    // "data hilang", dan dulu ikut terhitung sehingga hari yang terukur penuh
+    // tetap menampilkan beberapa titik hilang.
+    let lastWithData = -1;
+    this.chartData.forEach((d, i) => { if ((d.samples || 0) > 0) lastWithData = i; });
+    if (lastWithData === -1) return 0;
+
+    let missing = 0;
+    for (let i = 0; i <= lastWithData; i++) {
+      if ((this.chartData[i].samples || 0) === 0) missing++;
+    }
+    return missing;
   }
 
   generateChartPaths() {
@@ -691,10 +720,59 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         return `M ${left} ${height} ${line} L ${right} ${height} Z`;
       }).join(' ');
 
+    // Disimpan supaya penanda kursor memakai skala yang sama dengan path.
+    this.chartMaxValue = maxValue;
+
     this.txPath = buildLine(d => d.tx);
     this.txAreaPath = buildArea(d => d.tx);
     this.rxPath = buildLine(d => d.rx);
     this.rxAreaPath = buildArea(d => d.rx);
+  }
+
+  /**
+   * Petakan posisi kursor ke titik terdekat pada grafik.
+   * Semua titik berjarak sama (`stepX = lebar/(n-1)`), jadi cukup satu pembagian.
+   */
+  onChartHover(event: MouseEvent) {
+    const points = this.chartData.length;
+    if (points === 0) return;
+
+    const host = event.currentTarget as HTMLElement | null;
+    const rect = host ? host.getBoundingClientRect() : null;
+    if (!rect || rect.width <= 0) return;
+
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const index = points > 1 ? Math.round(ratio * (points - 1)) : 0;
+    const point = this.chartData[index];
+    const max = this.chartMaxValue || 300;
+
+    // Area grafik tingginya 130 dari viewBox 150.
+    const yFor = (mbps: number) => 130 - Math.min(130, ((Number(mbps) || 0) / max) * 130);
+    const left = points > 1 ? (index / (points - 1)) * 100 : 0;
+
+    this.hoveredPoint = {
+      label: point.label,
+      tx: point.tx,
+      rx: point.rx,
+      samples: point.samples || 0,
+      left,
+      txY: yFor(point.tx),
+      rxY: yFor(point.rx),
+      flip: left > 75
+    };
+    this.cdr.markForCheck();
+  }
+
+  onChartLeave() {
+    this.hoveredPoint = null;
+    this.cdr.markForCheck();
+  }
+
+  /** Nilai keterangan grafik: Mbps bila >= 1, selain itu Kbps. */
+  formatChartValue(mbps: number): string {
+    const value = Number(mbps) || 0;
+    if (value <= 0) return '0 Kbps';
+    return value >= 1 ? `${value.toFixed(2)} Mbps` : `${Math.round(value * 1000)} Kbps`;
   }
 
   getPeriodLabel(): string {

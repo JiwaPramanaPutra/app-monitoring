@@ -20,7 +20,7 @@ const { parseMonitorRates, mapInterfaces, mergeProbeCredentials } = require('./s
 const { buildOfflineFallback, toChartSamples } = require('./services/traffic-response');
 const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
-const { decideDowntimeAction } = require('./services/downtime-classify');
+const { decideDowntimeAction, isIdleSample } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
 
@@ -828,7 +828,7 @@ function startBackgroundTrafficCollector() {
                 // memang sedang sepi. Bedakan supaya hanya gangguan sungguhan
                 // yang tercatat — dan cek link hanya saat angkanya 0, sehingga
                 // site yang ramai tidak membayar satu panggilan ekstra.
-                const idle = sample.txBps === 0 && sample.rxBps === 0;
+                const idle = isIdleSample(sample.txBps, sample.rxBps);
                 const running = idle ? await isInterfaceRunning(routerConfig) : true;
                 const ongoing = storage.getOngoingDowntime(siteName);
 
@@ -836,7 +836,12 @@ function startBackgroundTrafficCollector() {
                     txBps: sample.txBps,
                     rxBps: sample.rxBps,
                     running,
-                    ongoingKind: ongoing ? ongoing.kind : null
+                    // Kejadian lama (sebelum klasifikasi) tidak punya `kind`;
+                    // isinya kegagalan koneksi, jadi dinormalkan menjadi
+                    // `unreachable`. Tanpa normalisasi ini, `undefined` terbaca
+                    // sama dengan "tidak ada kejadian terbuka" dan link-down yang
+                    // terverifikasi ikut tenggelam di dalamnya.
+                    ongoingKind: ongoing ? (ongoing.kind || 'unreachable') : null
                 });
 
                 // Urutan penting: tutup dulu, baru buka. `recordDowntimeStart`
