@@ -20,6 +20,7 @@ const { parseMonitorRates, mapInterfaces, mergeProbeCredentials } = require('./s
 const { buildOfflineFallback, toChartSamples } = require('./services/traffic-response');
 const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
+const { decideDowntimeAction } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
 
@@ -298,27 +299,23 @@ app.get('/api/router/traffic', async (req, res) => {
         liveData.routerModel = routerConfig.routerModel;
         cachedTrafficBySite[site || '_default'] = liveData;
 
-        // Record sample in storage if site is configured
+        // Pencatatan downtime sengaja HANYA di collector (satu penulis, satu
+        // irama 6 detik). Endpoint ini dipanggil browser tiap 2 detik, dan kalau
+        // ia juga menulis ledger, hitungan gagal dan durasi downtime jadi
+        // bergantung pada ada-tidaknya halaman dibuka.
         if (site) {
-            siteFailureCounts[site] = 0;
             storage.recordTrafficSample({
                 site,
                 timestamp: liveData.timestamp,
                 txMbps: liveData.txMbps,
                 rxMbps: liveData.rxMbps
             });
-            // If it was down, mark recovered
-            storage.recordDowntimeEnd(site);
         }
 
         return res.json(liveData);
     } catch (err) {
-        if (site) {
-            siteFailureCounts[site] = (siteFailureCounts[site] || 0) + 1;
-            if (siteFailureCounts[site] >= FAILURE_THRESHOLD) {
-                storage.recordDowntimeStart(site, err.message);
-            }
-        }
+        // Ledger downtime hanya ditulis collector, supaya durasinya tidak
+        // bergantung pada ada-tidaknya halaman Monitoring dibuka.
 
         // Koneksi gagal: laporkan apa adanya (`connected: false`) sambil tetap
         // menampilkan identitas dan angka terakhir MILIK SITE INI sebagai kenangan.
@@ -559,7 +556,9 @@ async function getRawSamples(site, startDate, endDate) {
     const startMs = startDate ? new Date(startDate + 'T00:00:00+07:00') : null;
     const endMs = endDate ? new Date(endDate + 'T23:59:59+07:00') : null;
 
-    // Coba MongoDB
+    const collected = [];
+    const sources = [];
+
     if (mongoose.connection.readyState === 1) {
         try {
             const TrafficSample = require('./models/TrafficSample');
@@ -570,17 +569,35 @@ async function getRawSamples(site, startDate, endDate) {
                 if (endMs) query.timestamp.$lte = endMs;
             }
             const docs = await TrafficSample.find(query).sort({ timestamp: 1 }).lean();
-            if (docs.length > 0) return { source: 'mongodb', samples: docs };
+            collected.push(...docs);
+            sources.push('mongodb');
         } catch (e) {
-            console.warn('MongoDB query failed, fallback to JSON:', e.message);
+            console.warn('MongoDB query failed, memakai JSON saja:', e.message);
         }
     }
 
-    // Fallback ke JSON local
-    let samples = storage.getTrafficHistory(site);
-    if (startMs) samples = samples.filter(s => new Date(s.timestamp) >= startMs);
-    if (endMs) samples = samples.filter(s => new Date(s.timestamp) <= endMs);
-    return { source: 'json', samples };
+    let jsonSamples = storage.getTrafficHistory(site);
+    if (startMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) >= startMs);
+    if (endMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) <= endMs);
+    collected.push(...jsonSamples);
+    sources.push('json');
+
+    // Kedua sumber menyimpan periode yang berbeda (JSON sejak 14/9, MongoDB
+    // hanya sejak koneksinya hidup). Dulu fungsi ini memilih salah satu, dan
+    // akibatnya grafik riwayat terpotong. Sekarang keduanya digabung, dengan
+    // duplikat `site`+`timestamp` dibuang.
+    const seen = new Set();
+    const samples = collected.filter(s => {
+        if (!s || !s.timestamp) return false;
+        const stamp = new Date(s.timestamp);
+        if (isNaN(stamp.getTime())) return false;
+        const key = `${s.site || site}|${stamp.toISOString()}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    }).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    return { source: sources.join('+'), samples };
 }
 
 /**
@@ -719,6 +736,39 @@ app.delete('/api/router/downtime-events', (req, res) => {
 });
 
 /**
+ * Apakah interface yang dipantau sedang link-up?
+ *
+ * Mengembalikan `null` bila statusnya tidak bisa dipastikan. Pemanggil WAJIB
+ * memperlakukan `null` sebagai "tidak tahu" dan tidak menuduh downtime —
+ * kegagalan membaca status bukan bukti link putus.
+ */
+async function isInterfaceRunning(routerConfig) {
+    const api = new RouterOSAPI({
+        host: routerConfig.host,
+        port: routerConfig.port,
+        user: routerConfig.user,
+        password: routerConfig.password,
+        timeout: routerConfig.timeout || 3,
+        tls: MIKROTIK_TLS_OPTIONS
+    });
+    api.on('error', () => { });
+
+    try {
+        await api.connect();
+        const rows = await api.write('/interface/print', [
+            `?name=${routerConfig.interface}`,
+            '=.proplist=name,running'
+        ]);
+        await api.close().catch(() => { });
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+        return rows[0].running === 'true';
+    } catch (err) {
+        try { await api.close(); } catch (e) { }
+        return null;
+    }
+}
+
+/**
  * Background polling worker untuk site yang punya routerConfig.
  * Mengumpulkan data berkala (setiap 6 detik) secara otomatis di backend
  * agar history tetap tercatat meskipun browser tidak dibuka.
@@ -750,17 +800,19 @@ function startBackgroundTrafficCollector() {
         }
 
         for (const { siteName, cfg } of configuredSites) {
+            const routerConfig = {
+                host: cfg.host,
+                port: cfg.port || 8728,
+                displayPort: cfg.displayPort,
+                user: cfg.user,
+                password: cfg.password,
+                interface: cfg.interface || 'ether1',
+                timeout: cfg.timeout || 3,
+                routerModel: cfg.routerModel
+            };
+
             try {
-                const sample = await fetchMikrotikTraffic({
-                    host: cfg.host,
-                    port: cfg.port || 8728,
-                    displayPort: cfg.displayPort,
-                    user: cfg.user,
-                    password: cfg.password,
-                    interface: cfg.interface || 'ether1',
-                    timeout: cfg.timeout || 3,
-                    routerModel: cfg.routerModel
-                });
+                const sample = await fetchMikrotikTraffic(routerConfig);
 
                 // Reset hitungan error jika berhasil connect
                 siteFailureCounts[siteName] = 0;
@@ -772,16 +824,50 @@ function startBackgroundTrafficCollector() {
                     rxMbps: sample.rxMbps
                 });
 
-                // Jika sebelumnya ada downtime tercatat, pulihkan
-                storage.recordDowntimeEnd(siteName);
+                // Rate 0 bisa berarti interface-nya benar-benar link-down, atau
+                // memang sedang sepi. Bedakan supaya hanya gangguan sungguhan
+                // yang tercatat — dan cek link hanya saat angkanya 0, sehingga
+                // site yang ramai tidak membayar satu panggilan ekstra.
+                const idle = sample.txBps === 0 && sample.rxBps === 0;
+                const running = idle ? await isInterfaceRunning(routerConfig) : true;
+                const ongoing = storage.getOngoingDowntime(siteName);
+
+                const action = decideDowntimeAction({
+                    txBps: sample.txBps,
+                    rxBps: sample.rxBps,
+                    running,
+                    ongoingKind: ongoing ? ongoing.kind : null
+                });
+
+                // Urutan penting: tutup dulu, baru buka. `recordDowntimeStart`
+                // mengembalikan kejadian yang sedang terbuka apa adanya, jadi
+                // tanpa ini gangguan link tenggelam di dalam event "tidak
+                // terpantau" dan tidak pernah menurunkan uptime. Namun kalau
+                // kejadian yang terbuka SUDAH `interface-down`, jangan ditutup:
+                // itu gangguan yang sama, dan menutupnya tiap polling akan
+                // memecahnya menjadi ribuan baris.
+                if (action.closeOpen) storage.recordDowntimeEnd(siteName);
+                if (action.open) {
+                    storage.recordDowntimeStart(
+                        siteName,
+                        `Interface ${routerConfig.interface} link-down`,
+                        action.open
+                    );
+                }
 
             } catch (err) {
                 siteFailureCounts[siteName] = (siteFailureCounts[siteName] || 0) + 1;
                 console.warn(`[Collector] ${siteName} poll failed (${siteFailureCounts[siteName]}/${FAILURE_THRESHOLD}): ${err.message}`);
 
-                // Hanya catat downtime resmi jika sudah gagal >= 3 kali berturut-turut
+                // Gagal menyambung = aplikasi kehilangan visibilitas, bukan
+                // situsnya mati. Hanya dicatat setelah beberapa kegagalan
+                // berturut-turut, dan dengan `kind` yang benar.
                 if (siteFailureCounts[siteName] >= FAILURE_THRESHOLD) {
-                    storage.recordDowntimeStart(siteName, err.message || 'Koneksi router gagal');
+                    storage.recordDowntimeStart(
+                        siteName,
+                        err.message || 'Koneksi router gagal',
+                        'unreachable'
+                    );
                 }
             }
         }

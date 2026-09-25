@@ -12,19 +12,29 @@ interface TrafficData {
   label: string;
   tx: number;
   rx: number;
+  /** Jumlah sample di bucket ini. `0` berarti jam itu datanya hilang, bukan nol. */
+  samples?: number;
 }
 
 interface UptimeData {
   site: string;
-  uptimePct: number;
+  /** `null` = periode ini belum punya dasar pengukuran, jadi uptime tidak diklaim. */
+  uptimePct: number | null;
   color: string;
+  /** Durasi gangguan sungguhan (interface link-down). */
   downtimeTotal: string;
+  /** Durasi aplikasi kehilangan visibilitas ke router — bukan gangguan situs. */
+  unreachableTotal: string;
   lastDown: string;
   lastRecover: string;
 }
 
 interface DowntimeEvent {
   site: string;
+  /** `unreachable` (gagal koneksi) atau `interface-down` (link putus). */
+  kind?: string;
+  /** Sebab yang dicatat backend, ditampilkan sebagai tooltip. */
+  reason?: string;
   start: string;
   duration: string;
   color: string;
@@ -185,6 +195,10 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         if (res && res.success && Array.isArray(res.events)) {
           this.allDowntimeEvents = res.events.map((e: any) => ({
             site: e.site,
+            // Kejadian tanpa `kind` adalah data lama dan isinya kegagalan
+            // koneksi, jadi diperlakukan sebagai `unreachable`.
+            kind: e.kind === 'interface-down' ? 'interface-down' : 'unreachable',
+            reason: e.reason || '',
             start: e.start,
             duration: e.duration,
             color: e.color || '#C4442E',
@@ -239,7 +253,9 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.chartData = aggregated.map((d: any) => ({
       label: d.label,
       tx: Number(d.tx) || 0,
-      rx: Number(d.rx) || 0
+      rx: Number(d.rx) || 0,
+      // Bucket tanpa sample bukan "trafik nol": jam itu datanya memang hilang.
+      samples: Number(d.samples) || 0
     }));
     this.chartLabels = this.chartData.map(d => d.label);
     this.calculateStatistics();
@@ -474,7 +490,9 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     const results: UptimeData[] = [];
 
     for (const site of this.sites) {
-      let downtimeTotal = 0;
+      let downtimeTotal = 0;      // hanya interface-down = gangguan sungguhan
+      let unreachableTotal = 0;   // gagal koneksi = aplikasi kehilangan visibilitas
+      let measuredSamples = 0;    // bukti periode ini memang terukur
       let lastDown = '—';
       let lastRecover = '—';
 
@@ -491,13 +509,14 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
             return eventTime >= periodStart;
           });
 
-          // Calculate total downtime in seconds
           for (const ev of relevantEvents) {
-            if (ev.end) {
-              const startTime = new Date(ev.start).getTime();
-              const endTime = new Date(ev.end).getTime();
-              downtimeTotal += (endTime - startTime) / 1000;
-            }
+            if (!ev.end) continue;
+            const seconds = (new Date(ev.end).getTime() - new Date(ev.start).getTime()) / 1000;
+            if (seconds <= 0) continue;
+            // Kejadian tanpa `kind` adalah data lama (sebelum klasifikasi) dan
+            // isinya kegagalan koneksi, jadi diperlakukan sebagai `unreachable`.
+            if (ev.kind === 'interface-down') downtimeTotal += seconds;
+            else unreachableTotal += seconds;
           }
 
           // Get last down and recover times
@@ -508,36 +527,43 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           }
         }
       } catch (e) {
-        // If fetch fails, show 100% uptime (no data)
+        // Dibiarkan kosong: situs ini akan tampil tanpa dasar pengukuran.
+      }
+
+      // Uptime hanya diklaim kalau periode ini memang terukur. Jumlah sample
+      // adalah buktinya; tanpa itu, "100%" cuma asumsi.
+      try {
+        const params = new URLSearchParams({ site, raw: '1', limit: '1' });
+        if (this.startDate) params.set('startDate', this.startDate);
+        if (this.endDate) params.set('endDate', this.endDate);
+        const res = await this.api.fetch(`/api/router/history?${params.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          measuredSamples = Number(data.totalSamples) || 0;
+        }
+      } catch (e) {
+        // Tanpa bukti -> uptime tidak diklaim.
       }
 
       const totalPeriodSeconds = periodMs / 1000;
-      const uptimePct = totalPeriodSeconds > 0
+      // Uptime hanya diklaim kalau periode ini benar-benar terukur. Adanya
+      // kejadian "tidak terpantau" justru berarti kita TIDAK mengukur, jadi itu
+      // bukan dasar untuk mengklaim 100%.
+      const hasEvidence = measuredSamples > 0;
+      const uptimePct = hasEvidence && totalPeriodSeconds > 0
         ? Math.max(0, Math.min(100, parseFloat((((totalPeriodSeconds - downtimeTotal) / totalPeriodSeconds) * 100).toFixed(1))))
-        : 100;
+        : null;
 
-      const color = uptimePct >= 99 ? '#5B7A52' : uptimePct >= 97 ? '#D9A441' : '#C4442E';
-
-      // Format downtime duration
-      let downtimeStr = '0s';
-      if (downtimeTotal > 0) {
-        const d = Math.floor(downtimeTotal / 86400);
-        const h = Math.floor((downtimeTotal % 86400) / 3600);
-        const m = Math.floor((downtimeTotal % 3600) / 60);
-        const s = Math.floor(downtimeTotal % 60);
-        const parts: string[] = [];
-        if (d > 0) parts.push(`${d}d`);
-        if (h > 0) parts.push(`${h}h`);
-        if (m > 0) parts.push(`${m}m`);
-        if (s > 0 || parts.length === 0) parts.push(`${s}s`);
-        downtimeStr = parts.join(' ');
-      }
+      const color = uptimePct === null
+        ? '#9AA0A6'
+        : uptimePct >= 99 ? '#5B7A52' : uptimePct >= 97 ? '#D9A441' : '#C4442E';
 
       results.push({
         site,
         uptimePct,
         color,
-        downtimeTotal: downtimeStr,
+        downtimeTotal: this.formatDurationText(downtimeTotal),
+        unreachableTotal: this.formatDurationText(unreachableTotal),
         lastDown,
         lastRecover
       });
@@ -547,6 +573,23 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   }
 
 
+
+  /** Ubah durasi detik menjadi teks ringkas, mis. `1h 5m 3s`. */
+  private formatDurationText(seconds: number): string {
+    if (!seconds || seconds <= 0) return '0s';
+
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+
+    const parts: string[] = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+    return parts.join(' ');
+  }
 
   filterDowntimeLog() {
     const now = new Date();
@@ -592,6 +635,11 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
   }
 
+  /** Berapa titik grafik yang tidak punya sample sama sekali (jam yang datanya hilang). */
+  get chartMissingBuckets(): number {
+    return this.chartData.filter(d => (d.samples || 0) === 0).length;
+  }
+
   generateChartPaths() {
     if (this.chartData.length === 0) return;
 
@@ -604,27 +652,49 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     );
 
     const points = this.chartData.length;
-    const stepX = width / (points - 1);
+    const stepX = points > 1 ? width / (points - 1) : 0;
 
-    // Generate Tx path
-    let txPathPoints: string[] = [];
+    // Rangkaian titik berurutan yang punya sample. Bucket tanpa sample digambar
+    // sebagai CELAH — grafiknya putus — supaya jam yang datanya hilang tidak
+    // terlihat seperti trafik nol.
+    const runs: number[][] = [];
+    let current: number[] = [];
     this.chartData.forEach((data, i) => {
-      const x = i * stepX;
-      const y = height - (data.tx / maxValue) * height;
-      txPathPoints.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`);
+      if ((data.samples || 0) > 0) {
+        current.push(i);
+      } else if (current.length > 0) {
+        runs.push(current);
+        current = [];
+      }
     });
-    this.txPath = txPathPoints.join(' ');
-    this.txAreaPath = `M 0 ${height} ${txPathPoints.join(' ').substring(2)} L ${width} ${height} Z`;
+    if (current.length > 0) runs.push(current);
 
-    // Generate Rx path
-    let rxPathPoints: string[] = [];
-    this.chartData.forEach((data, i) => {
-      const x = i * stepX;
-      const y = height - (data.rx / maxValue) * height;
-      rxPathPoints.push(`${i === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`);
-    });
-    this.rxPath = rxPathPoints.join(' ');
-    this.rxAreaPath = `M 0 ${height} ${rxPathPoints.join(' ').substring(2)} L ${width} ${height} Z`;
+    const xAt = (i: number) => i * stepX;
+    const yAt = (i: number, pick: (d: TrafficData) => number) =>
+      height - (pick(this.chartData[i]) / maxValue) * height;
+
+    // Beberapa sub-path dalam satu atribut `d` tidak tersambung, jadi garis
+    // terputus di setiap celah secara alami.
+    const buildLine = (pick: (d: TrafficData) => number) =>
+      runs.map(run => run
+        .map((i, k) => `${k === 0 ? 'M' : 'L'} ${xAt(i).toFixed(2)} ${yAt(i, pick).toFixed(2)}`)
+        .join(' ')
+      ).join(' ');
+
+    const buildArea = (pick: (d: TrafficData) => number) =>
+      runs.map(run => {
+        const left = xAt(run[0]).toFixed(2);
+        const right = xAt(run[run.length - 1]).toFixed(2);
+        const line = run
+          .map(i => `L ${xAt(i).toFixed(2)} ${yAt(i, pick).toFixed(2)}`)
+          .join(' ');
+        return `M ${left} ${height} ${line} L ${right} ${height} Z`;
+      }).join(' ');
+
+    this.txPath = buildLine(d => d.tx);
+    this.txAreaPath = buildArea(d => d.tx);
+    this.rxPath = buildLine(d => d.rx);
+    this.rxAreaPath = buildArea(d => d.rx);
   }
 
   getPeriodLabel(): string {

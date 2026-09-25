@@ -75,19 +75,27 @@
           <th>Site</th>
           <th>Uptime</th>
           <th style="width:120px;"></th>
-          <th>Total Downtime</th>
+          <th>Downtime</th>
+          <th>Tidak Terpantau</th>
           <th>Terakhir Down</th>
           <th>Terakhir Pulih</th>
         </tr>
         <tr *ngFor="let item of uptimeData">
           <td style="font-weight:500;">{{ item.site }}</td>
-          <td class="mono" [style.color]="item.color" style="font-weight:500;">{{ item.uptimePct }}%</td>
+          <td class="mono" [style.color]="item.color" style="font-weight:500;"
+            [title]="item.uptimePct === null ? 'Belum ada sample trafik di periode ini, jadi uptime tidak diklaim' : ''">
+            {{ item.uptimePct === null ? '—' : item.uptimePct + '%' }}
+          </td>
           <td>
             <div style="width:100%;height:6px;background:#EDEEF1;border-radius:3px;overflow:hidden;">
-              <div [style.width.%]="item.uptimePct" [style.background]="item.color" style="height:100%;"></div>
+              <div [style.width.%]="item.uptimePct === null ? 0 : item.uptimePct" [style.background]="item.color" style="height:100%;"></div>
             </div>
           </td>
           <td class="mono">{{ item.downtimeTotal }}</td>
+          <td class="mono" [style.color]="item.unreachableTotal === '0s' ? 'inherit' : '#B45309'"
+            title="Gagal menyambung ke RouterOS API — aplikasi kehilangan visibilitas, bukan gangguannya situs">
+            {{ item.unreachableTotal }}
+          </td>
           <td class="mono" style="font-size:10.5px;">{{ item.lastDown }}</td>
           <td class="mono" style="font-size:10.5px;" [style.color]="item.lastRecover === '—' ? '#C4442E' : 'inherit'">{{ item.lastRecover }}</td>
         </tr>
@@ -101,6 +109,10 @@
           <span>Trend bandwidth <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ selectedPeriod }}</span></span>
           <span *ngIf="isLiveRouterConnected" class="badge badge-ok" style="font-size:10px;padding:1px 6px;">
             Live MikroTik Terhubung
+          </span>
+          <span *ngIf="chartMissingBuckets > 0" style="font-size:10.5px;color:#B45309;font-weight:400;"
+            title="Jam tanpa sample tidak digambar sebagai trafik nol — grafiknya putus di situ">
+            {{ chartMissingBuckets }} titik tanpa data
           </span>
         </div>
         <div *ngIf="isLiveRouterConnected" class="mono" style="font-size:11px;color:#6B7280;">
@@ -174,18 +186,25 @@
     <!-- Downtime log -->
     <div class="card" style="padding:0;overflow:hidden;">
       <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);">
-        <div style="font-size:12px;font-weight:500;">Log riwayat downtime <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ getPeriodLabel() }}</span></div>
+        <div style="font-size:12px;font-weight:500;">Log riwayat downtime &amp; keterlihatan <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ getPeriodLabel() }}</span></div>
       </div>
       <table *ngIf="downtimeLog.length > 0">
         <tr>
           <th>Site</th>
-          <th>Mulai Down</th>
+          <th>Jenis</th>
+          <th>Mulai</th>
           <th>Durasi</th>
           <th>Pulih</th>
           <th style="text-align:center;">Lap</th>
         </tr>
         <tr *ngFor="let log of downtimeLog">
           <td style="font-weight:500;">{{ log.site }}</td>
+          <td>
+            <span [style.color]="log.kind === 'interface-down' ? '#C4442E' : '#B45309'" style="font-size:11px;"
+              [title]="log.reason || ''">
+              {{ log.kind === 'interface-down' ? 'Downtime' : 'Tidak terpantau' }}
+            </span>
+          </td>
           <td class="mono" style="font-size:10.5px;">{{ log.start }}</td>
           <td class="mono" [style.color]="log.color">{{ log.duration }}</td>
           <td class="mono" style="font-size:10.5px;" [style.color]="log.end === '—' ? '#C4442E' : 'inherit'">{{ log.end === '—' ? 'Belum pulih' : log.end }}</td>
@@ -197,7 +216,7 @@
         </tr>
       </table>
       <div *ngIf="downtimeLog.length === 0" style="padding:24px;text-align:center;color:var(--muted);font-size:12px;">
-        Tidak ada downtime pada periode ini
+        Tidak ada downtime maupun keterlihatan yang hilang pada periode ini
       </div>
     </div>
   </div>

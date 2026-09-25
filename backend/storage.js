@@ -197,7 +197,17 @@ module.exports = {
         return filtered;
     },
 
-    recordDowntimeStart(site, reason = 'Router offline / tidak merespon') {
+    /**
+     * Catat awal sebuah kejadian downtime.
+     *
+     * `kind` membedakan dua hal yang dulu dicampur:
+     * - `unreachable` — gagal menyambung ke RouterOS API (host/port/kredensial/TLS/
+     *   jaringan). Ini aplikasi kehilangan visibilitas, BUKAN situsnya mati, jadi
+     *   tidak boleh ikut menurunkan uptime.
+     * - `interface-down` — router menjawab tapi interface yang dipantau link-down.
+     *   Ini gangguan sungguhan.
+     */
+    recordDowntimeStart(site, reason = 'Router offline / tidak merespon', kind = 'unreachable') {
         const ongoing = downtimeEvents.find(e => e.site === site && !e.end);
         if (ongoing) return ongoing;
 
@@ -205,6 +215,7 @@ module.exports = {
         const newEvent = {
             id: 'DT-' + Date.now(),
             site,
+            kind,
             start: formatDateTimeIndo(now),
             startTimeIso: now.toISOString(),
             end: null,
