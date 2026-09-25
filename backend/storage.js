@@ -1,8 +1,12 @@
 const fs = require('fs');
 const mongoose = require('mongoose');
 const path = require('path');
+const { uniqueDeviceKey, findDeviceIndexByKey, removeDeviceByKey } = require('./services/device-identity');
 
-const DATA_DIR = path.join(__dirname, 'data');
+// Lokasi data JSON lokal. `DATA_DIR` hanya untuk pengujian supaya test bisa
+// memakai direktori sementara dan tidak menyentuh data asli; defaultnya tetap
+// `backend/data`.
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, 'data');
 const TRAFFIC_FILE = path.join(DATA_DIR, 'traffic_history.json');
 const DOWNTIME_FILE = path.join(DATA_DIR, 'downtime_events.json');
 const DEVICES_FILE = path.join(DATA_DIR, 'devices.json');
@@ -266,7 +270,9 @@ module.exports = {
     },
 
     saveLocalDevice(device) {
-        const id = device._id || device.id || 'dev_' + Date.now();
+        // Kunci dari klien bisa sudah terpakai, dan kunci ganda membuat
+        // penghapusan berikutnya membuang lebih dari satu perangkat.
+        const id = uniqueDeviceKey(localDevices, device._id || device.id);
         const newDev = { ...device, _id: id, id: device.id || Date.now(), createdAt: new Date().toISOString() };
         localDevices.unshift(newDev);
         saveLocalDevices();
@@ -274,7 +280,7 @@ module.exports = {
     },
 
     updateLocalDevice(id, updateData) {
-        const index = localDevices.findIndex(d => String(d._id) === String(id) || String(d.id) === String(id));
+        const index = findDeviceIndexByKey(localDevices, id);
         if (index === -1) return null;
         const { _id, createdAt, updatedAt, ...safeUpdate } = updateData || {};
         localDevices[index] = { ...localDevices[index], ...safeUpdate, updatedAt: new Date().toISOString() };
@@ -283,13 +289,13 @@ module.exports = {
     },
 
     deleteLocalDevice(id) {
-        const initialLen = localDevices.length;
-        localDevices = localDevices.filter(d => String(d._id) !== String(id) && String(d.id) !== String(id));
-        if (localDevices.length < initialLen) {
-            saveLocalDevices();
-            return true;
-        }
-        return false;
+        // `_id` dipakai lebih dulu supaya menghapus satu perangkat tidak ikut
+        // membuang perangkat lain yang kebetulan ber-`id` sama.
+        const { devices, removed } = removeDeviceByKey(localDevices, id);
+        if (!removed) return false;
+        localDevices = devices;
+        saveLocalDevices();
+        return true;
     },
 
     // ── Local Fallback Project Operations ──

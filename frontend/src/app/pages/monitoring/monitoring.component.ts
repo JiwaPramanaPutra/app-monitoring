@@ -7,7 +7,7 @@ import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropd
 import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
-import { findDuplicateIp } from '../../shared/device-identity';
+import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
@@ -99,8 +99,11 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   currentPage = 1;
   pageSize = 10;
 
+  /** Dipakai template: kunci identitas baris perangkat (lihat `shared/device-identity`). */
+  readonly deviceKey = deviceKey;
+
   // Dropdown action menu
-  activeDropdown: number | string | null = null;
+  activeDropdown: string | null = null;
 
   // Detail modal
   selectedDevice: MonitoringDevice | null = null;
@@ -628,9 +631,16 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   // ── Actions & Modals ──────────────────────────────────────────
 
-  toggleDropdown(deviceId: number | string, event: Event) {
+  /**
+   * Buka/tutup menu aksi satu baris.
+   *
+   * Kunci kosong diabaikan: kalau tidak, semua baris yang tidak punya kunci akan
+   * cocok satu sama lain dan seluruh menu terbuka bersamaan.
+   */
+  toggleDropdown(key: string, event: Event) {
     event.stopPropagation();
-    this.activeDropdown = this.activeDropdown === deviceId ? null : deviceId;
+    if (!key) return;
+    this.activeDropdown = this.activeDropdown === key ? null : key;
   }
 
   closeDropdown() {

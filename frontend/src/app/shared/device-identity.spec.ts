@@ -1,6 +1,36 @@
-import { findDuplicateIp, isUsableIp } from './device-identity';
+import { deviceKey, findDuplicateIp, isUsableIp } from './device-identity';
 
 describe('device-identity', () => {
+  describe('deviceKey', () => {
+    it('prefers _id, which is all a Mongo-backed device has', () => {
+      expect(deviceKey({ _id: '6ab49dbf3232eb2c6fc7b657' })).toBe('6ab49dbf3232eb2c6fc7b657');
+      expect(deviceKey({ _id: '6ab49dbf3232eb2c6fc7b657', id: 7 })).toBe('6ab49dbf3232eb2c6fc7b657');
+    });
+
+    it('falls back to id for a local-mode record', () => {
+      expect(deviceKey({ id: 7 })).toBe('7');
+      expect(deviceKey({ id: 'dev_1' })).toBe('dev_1');
+    });
+
+    it('normalizes numbers to strings so === comparisons cannot drift', () => {
+      expect(deviceKey({ id: 7 })).toBe(deviceKey({ _id: '7' }));
+    });
+
+    it('returns an empty key only when there is no key at all', () => {
+      expect(deviceKey({})).toBe('');
+      expect(deviceKey({ _id: null, id: undefined })).toBe('');
+      expect(deviceKey(null)).toBe('');
+      expect(deviceKey(undefined)).toBe('');
+    });
+
+    it('gives different devices different keys — the bug was every row matching', () => {
+      const a = deviceKey({ _id: 'aaa' });
+      const b = deviceKey({ _id: 'bbb' });
+      expect(a).not.toBe(b);
+      expect(a === b).toBe(false);
+    });
+  });
+
   const devices = [
     { id: 'd1', name: 'Router Srikandi', ip: '223.27.147.18', siteLocation: 'Poltekkes Gizi' },
     { id: 'd2', name: 'AP-Akademik-Lt1', ip: '192.168.104.5', siteLocation: 'Poltekkes Gizi' },

@@ -1,10 +1,12 @@
 /**
- * Aturan identitas perangkat: satu IP hanya boleh dipakai satu perangkat di
- * site yang sama.
+ * Aturan identitas perangkat.
  *
- * Sengaja dibatasi per site. Gedung/site berbeda umumnya memakai rentang privat
- * yang sama (192.168.x.x, 10.x.x.x), jadi membandingkan lintas site akan menolak
- * konfigurasi yang sah.
+ * Dua hal yang mudah salah dan sudah terbukti memakan korban:
+ * - **Kunci record**: dokumen Mongo hanya punya `_id`. Memakai `id` saja membuat
+ *   kuncinya `undefined` untuk semua baris, dan `undefined === undefined` bernilai
+ *   benar — satu klik membuka menu aksi seluruh baris.
+ * - **Alamat**: satu IP hanya untuk satu perangkat per site. Dibatasi per site
+ *   karena gedung berbeda umumnya memakai rentang privat yang sama.
  */
 
 export interface DeviceIpCandidate {
@@ -14,6 +16,22 @@ export interface DeviceIpCandidate {
   /** Dokumen Mongo hanya punya `_id`; mode JSON lokal menyimpan keduanya. */
   _id?: string | number;
   name?: string;
+}
+
+/**
+ * Kunci identitas sebuah perangkat: `_id` lebih dulu, lalu `id`.
+ *
+ * Mengembalikan string kosong bila record tidak punya kunci sama sekali.
+ * Pemanggil **wajib** memperlakukan kunci kosong sebagai "tidak ada baris yang
+ * cocok", bukan sebagai nilai yang boleh dibandingkan — kalau tidak, seluruh
+ * baris tanpa kunci akan cocok satu sama lain.
+ */
+export function deviceKey(
+  device: { _id?: string | number | null; id?: string | number | null } | null | undefined
+): string {
+  if (!device) return '';
+  const raw = device._id !== undefined && device._id !== null ? device._id : device.id;
+  return raw === undefined || raw === null ? '' : String(raw);
 }
 
 // Nilai yang dipakai UI untuk "tidak ada IP", bukan alamat sungguhan.

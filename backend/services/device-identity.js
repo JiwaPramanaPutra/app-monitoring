@@ -42,4 +42,64 @@ function deviceIpClashMessage(clash, ip) {
     return `IP ${String(ip || '').trim()} sudah dipakai perangkat "${name}" di site ${site}. Satu IP hanya untuk satu perangkat per site.`;
 }
 
-module.exports = { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage };
+/**
+ * Kunci `_id` yang belum terpakai untuk record perangkat baru.
+ *
+ * Kunci dari klien tidak bisa dipercaya apa adanya: `id` di frontend dihitung
+ * dari perangkat site yang sedang dilihat, padahal form boleh menyimpan ke site
+ * lain, jadi angkanya bisa sudah terpakai. Kunci yang bentrok membuat
+ * penghapusan berikutnya membuang lebih dari satu perangkat.
+ */
+function uniqueDeviceKey(devices, requested) {
+    const list = Array.isArray(devices) ? devices : [];
+    const taken = (candidate) => list.some(d => !!d
+        && (String(d._id) === String(candidate) || String(d.id) === String(candidate)));
+
+    const wanted = (requested === undefined || requested === null || String(requested).trim() === '')
+        ? 'dev_' + Date.now()
+        : requested;
+    if (!taken(wanted)) return wanted;
+
+    let candidate;
+    do {
+        candidate = 'dev_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    } while (taken(candidate));
+    return candidate;
+}
+
+/**
+ * Indeks record perangkat dengan kunci ini, atau -1.
+ *
+ * `_id` adalah kunci sebenarnya; `id` hanya kunci lama. Mencocokkan keduanya
+ * sekaligus berbahaya ketika `id` dipakai bersama oleh dua record: menghapus
+ * salah satu akan ikut membuang yang lain. Karena itu `_id` dicoba lebih dulu,
+ * dan `id` hanya dipakai bila tidak ada record yang `_id`-nya cocok.
+ */
+function findDeviceIndexByKey(devices, id) {
+    const list = Array.isArray(devices) ? devices : [];
+    const key = String(id);
+
+    const byId = list.findIndex(d => !!d && String(d._id) === key);
+    if (byId !== -1) return byId;
+    return list.findIndex(d => !!d && String(d.id) === key);
+}
+
+/** Buang TEPAT SATU record perangkat dengan kunci ini. */
+function removeDeviceByKey(devices, id) {
+    const list = Array.isArray(devices) ? devices : [];
+    const index = findDeviceIndexByKey(list, id);
+    if (index === -1) return { devices: list, removed: false };
+
+    const next = list.slice();
+    next.splice(index, 1);
+    return { devices: next, removed: true };
+}
+
+module.exports = {
+    isUsableDeviceIp,
+    findDeviceIpClash,
+    deviceIpClashMessage,
+    uniqueDeviceKey,
+    findDeviceIndexByKey,
+    removeDeviceByKey
+};

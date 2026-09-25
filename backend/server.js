@@ -1140,8 +1140,11 @@ app.post('/api/devices', async (req, res) => {
             newDevice = new Device(req.body);
             await newDevice.save();
         } else {
-            storage.saveLocalDevice(req.body);
-            newDevice = req.body;
+            // Pakai nilai balik `saveLocalDevice`: di mode lokal kunci yang
+            // tersimpan bisa berbeda dari yang dikirim klien (bentrok kunci
+            // diganti), dan tanpa `_id` itu klien memegang perangkat dengan
+            // kunci kosong sehingga DELETE/PUT berikutnya mengenai record lain.
+            newDevice = storage.saveLocalDevice(req.body);
         }
         res.json({ success: true, message: 'Device added', device: stripDeviceSecrets(newDevice.toObject ? newDevice.toObject() : newDevice) });
     } catch (err) {

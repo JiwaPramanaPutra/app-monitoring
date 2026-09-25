@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('../services/device-identity');
+const {
+    isUsableDeviceIp,
+    findDeviceIpClash,
+    deviceIpClashMessage,
+    uniqueDeviceKey,
+    findDeviceIndexByKey,
+    removeDeviceByKey
+} = require('../services/device-identity');
 
 const DEVICES = [
     { _id: '6ab49dbf3232eb2c6fc7b657', name: 'Router', ip: '223.27.147.18', siteLocation: 'Poltekkes Gizi' },
@@ -81,4 +88,80 @@ test('deviceIpClashMessage has a readable fallback for an unnamed device', () =>
     const message = deviceIpClashMessage({}, '10.0.0.1');
     assert.ok(message.includes('(tanpa nama)'));
     assert.ok(message.includes('(tanpa site)'));
+});
+
+const MIXED = [
+    { _id: 'dev_1', id: 1, name: 'Router', ip: '10.0.0.1', siteLocation: 'A' },
+    { _id: 'dev_2', id: 1, name: 'AP bentrok', ip: '10.0.0.2', siteLocation: 'B' }
+];
+
+test('uniqueDeviceKey keeps a free key as-is', () => {
+    assert.strictEqual(uniqueDeviceKey(MIXED, 'dev_9'), 'dev_9');
+});
+
+test('uniqueDeviceKey replaces a key that is already used by _id or id', () => {
+    // Angka `id` dihitung dari perangkat site yang sedang dilihat, jadi bisa
+    // sudah terpakai di site tujuan.
+    const fromId = uniqueDeviceKey(MIXED, 1);
+    assert.notStrictEqual(String(fromId), '1');
+    assert.notStrictEqual(fromId, 'dev_1');
+    assert.notStrictEqual(fromId, 'dev_2');
+
+    const fromUnderscoreId = uniqueDeviceKey(MIXED, 'dev_2');
+    assert.notStrictEqual(fromUnderscoreId, 'dev_2');
+});
+
+test('uniqueDeviceKey never returns a key already present in the list', () => {
+    const taken = new Set(MIXED.flatMap(d => [String(d._id), String(d.id)]));
+    for (const requested of [undefined, null, '', '   ', 1, 'dev_1', 'dev_2']) {
+        const key = uniqueDeviceKey(MIXED, requested);
+        assert.ok(!taken.has(String(key)), `key ${key} should be free`);
+    }
+});
+
+test('uniqueDeviceKey generates a key when the client sends none', () => {
+    assert.match(String(uniqueDeviceKey(MIXED, undefined)), /^dev_/);
+    assert.match(String(uniqueDeviceKey(MIXED, '')), /^dev_/);
+});
+
+test('uniqueDeviceKey tolerates a missing device list', () => {
+    assert.match(String(uniqueDeviceKey(null, undefined)), /^dev_/);
+    assert.strictEqual(uniqueDeviceKey(null, 'dev_5'), 'dev_5');
+});
+
+test('findDeviceIndexByKey prefers _id over a shared id', () => {
+    // Kedua record punya id 1. Tanpa preferensi _id, mencari 'dev_2' bisa
+    // mengenai record pertama.
+    assert.strictEqual(findDeviceIndexByKey(MIXED, 'dev_1'), 0);
+    assert.strictEqual(findDeviceIndexByKey(MIXED, 'dev_2'), 1);
+});
+
+test('findDeviceIndexByKey falls back to id when no _id matches', () => {
+    const legacy = [{ _id: 'dev_7', id: 7, name: 'Lama' }];
+    assert.strictEqual(findDeviceIndexByKey(legacy, 7), 0);
+});
+
+test('findDeviceIndexByKey reports -1 for an unknown key', () => {
+    assert.strictEqual(findDeviceIndexByKey(MIXED, 'tidak-ada'), -1);
+    assert.strictEqual(findDeviceIndexByKey(null, 'dev_1'), -1);
+});
+
+test('removeDeviceByKey removes exactly one record even when id is shared', () => {
+    // Inilah kerugian datanya: dulu filter lama membuang SEMUA record ber-id 1.
+    const result = removeDeviceByKey(MIXED, 'dev_1');
+    assert.strictEqual(result.removed, true);
+    assert.strictEqual(result.devices.length, 1);
+    assert.strictEqual(result.devices[0].name, 'AP bentrok');
+});
+
+test('removeDeviceByKey keeps the list untouched for an unknown key', () => {
+    const result = removeDeviceByKey(MIXED, 'tidak-ada');
+    assert.strictEqual(result.removed, false);
+    assert.deepStrictEqual(result.devices, MIXED);
+});
+
+test('removeDeviceByKey does not mutate the input list', () => {
+    const input = MIXED.map(d => ({ ...d }));
+    removeDeviceByKey(input, 'dev_1');
+    assert.strictEqual(input.length, 2);
 });
