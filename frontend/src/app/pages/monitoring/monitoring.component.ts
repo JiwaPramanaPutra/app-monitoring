@@ -208,12 +208,16 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
 // Inisialisasi perangkat + cek status real via ping
   async initDevices() {
+    // Sama seperti traffic: daftar perangkat dikunci ke site saat request dikirim,
+    // supaya respons yang telat tidak mengisi daftar site lain.
+    const site = this.selectedSite;
+
     try {
-      const site = encodeURIComponent(this.selectedSite);
-      const res = await this.api.fetch(`/api/devices/status?site=${site}`);
+      const res = await this.api.fetch(`/api/devices/status?site=${encodeURIComponent(site)}`);
       if (res.ok) {
         const data = await res.json();
         if (data && data.devices) {
+          if (site !== this.selectedSite) return;
           this.devices = data.devices;
           this.cdr.markForCheck();
           return;
@@ -224,7 +228,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       const fallback = await this.api.fetch('/api/devices');
       if (fallback.ok) {
         const data = await fallback.json();
-        if (data && data.devices) this.devices = data.devices;
+        if (data && data.devices) {
+          if (site !== this.selectedSite) return;
+          this.devices = data.devices;
+        }
       }
     } catch (e) {
       console.warn('Gagal memuat perangkat:', e);
@@ -261,9 +268,17 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   fetchRouterTraffic() {
-    this.api.fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)
+    // Koneksi ke router bisa memakan waktu detik-an, jadi responsnya bisa tiba
+    // setelah pengguna pindah site. Setiap request dikunci ke site-nya, dan
+    // hasilnya dibuang kalau site sudah berganti — kalau tidak, ip/interface/angka
+    // site lain tertulis ke widget ini dan sample-nya mendorong grafik site lain.
+    const site = this.selectedSite;
+
+    this.api.fetch(`/api/router/traffic?site=${encodeURIComponent(site)}`)
       .then(res => res.json())
       .then(data => {
+        if (site !== this.selectedSite) return;
+
         // Hanya proses traffic jika site memang terkonfigurasi pada backend
         if (data && data.siteConfigured && data.connected && typeof data.txMbps === 'number') {
           this.routerTraffic.ip = data.ip || '—';
@@ -305,6 +320,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
       })
       .catch(() => {
+        if (site !== this.selectedSite) return;
         this.routerTraffic.connected = false;
         this.routerTraffic.siteConfigured = false;
         this.routerTraffic.error = 'Tidak dapat menghubungi backend monitoring.';
@@ -691,11 +707,23 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       this.routerBridge.user = cfg.user || '';
       this.routerBridge.interface = cfg.interface || '';
     }
-    // Aktifkan bila site belum punya router sama sekali, atau memang perangkat
-    // inilah yang selama ini dipakai. Kalau site sudah punya router lain, biarkan
-    // pengguna yang memilih — jangan diam-diam merebut.
+
+    // Dicentang HANYA bila site ini memang sudah menunjuk perangkat ini.
+    // Sebelumnya site yang belum punya router ikut dicentang, sehingga edit
+    // biasa (alias/ruangan) diam-diam menyalakan monitoring dan site yang belum
+    // dikonfigurasi justru menolak penyimpanan.
     this.routerBridge.enabled =
-      !cfg?.host || String(cfg.host).trim() === (device.ip || '').trim();
+      !!cfg?.host && String(cfg.host).trim() === (device.ip || '').trim();
+  }
+
+  /**
+   * Site Location di modal Edit berubah: draft bridge harus ikut pindah site.
+   * Tanpa ini draft-nya tertinggal milik site sebelumnya dan bisa menulis
+   * `routerConfig` ke site yang salah.
+   */
+  onEditSiteLocationChange() {
+    this.initRouterBridgeForEdit(this.editingDevice);
+    this.cdr.markForCheck();
   }
 
   closeEditModal() {

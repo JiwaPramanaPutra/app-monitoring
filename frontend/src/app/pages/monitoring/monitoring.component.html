@@ -462,7 +462,7 @@
       <div class="form-row">
         <div class="form-group">
           <label>Site Location <span class="required">*</span></label>
-          <select [(ngModel)]="editingDevice.siteLocation" name="siteLocation" required>
+          <select [(ngModel)]="editingDevice.siteLocation" (ngModelChange)="onEditSiteLocationChange()" name="siteLocation" required>
             <option *ngFor="let site of sites" [value]="site">{{ site }}</option>
           </select>
         </div>
