@@ -7,6 +7,8 @@ import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropd
 import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
+import { findDuplicateIp } from '../../shared/device-identity';
+import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
   _id?: string;
@@ -17,6 +19,7 @@ export interface MonitoringDevice {
   brand: string;
   model: string;
   mac: string;
+  serialNumber?: string;
   ip: string;
   client: string;
   pingTime?: string;
@@ -35,6 +38,17 @@ export interface TrafficBar {
   rxHeight: number;
 }
 
+export interface RouterInterfaceOption {
+  name: string;
+  type: string;
+  running: boolean;
+  disabled: boolean;
+  comment: string;
+  macAddress: string;
+  rxBps: number;
+  txBps: number;
+}
+
 @Component({
   selector: 'app-monitoring',
   standalone: true,
@@ -44,6 +58,7 @@ export interface TrafficBar {
 })
 export class MonitoringComponent implements OnInit, OnDestroy {
   sites: string[] = [];
+  projects: any[] = [];
   selectedSite = '';
   selectedSiteLabel = '';
   searchText = '';
@@ -61,7 +76,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     rxBps: 0,
     connected: false,
     siteConfigured: false,
-    routerModel: ''
+    routerModel: '',
+    error: ''
   };
 
   // Sparkline bar visualization & metrics
@@ -73,7 +89,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   peakRate: string = '0 Kbps';
   avgRate: string = '0 Kbps';
 
-  private trafficHistory: { txBps: number; rxBps: number }[] = [];
+  private trafficHistory: { txBps: number; rxBps: number; timestamp?: string | null }[] = [];
   private trafficTimer: any = null;
   private deviceStatusTimer: any = null;
   readonly DEVICE_REFRESH_INTERVAL = 30000;
@@ -112,8 +128,19 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   showEditModal = false;
   isSavingEdit = false;
   editingDevice: any = {};
+  // Konfirmasi sinkron IP perangkat Router -> routerConfig.host (lihat routerHostSync).
+  syncRouterHost = false;
+  private editOriginalIp = '';
 
   newDevice: any = this.getEmptyDevice();
+  // Isi konfigurasi router trafik site dari perangkat bertipe Router (opsional).
+  // Port default 8729 = api-ssl; backend selalu memakai TLS ke RouterOS API.
+  routerBridge = { enabled: false, port: 8729, user: '', password: '', interface: '' };
+  // Daftar interface asli dari router pada form bridge. Nama interface harus
+  // persis sama dengan di RouterOS, jadi dipilih lewat dropdown, bukan diketik.
+  bridgeInterfaces: RouterInterfaceOption[] = [];
+  bridgeIfaceLoading = false;
+  bridgeIfaceError = '';
 
   constructor(
     private router: Router,
@@ -136,6 +163,12 @@ export class MonitoringComponent implements OnInit, OnDestroy {
         this.selectedSiteLabel = next;
         this.selectSite(next);
       }
+    });
+
+    // Hierarki site (Project -> Site -> Gedung -> Lantai) untuk dropdown form perangkat.
+    this.projectService.projects$.subscribe(projects => {
+      this.projects = projects || [];
+      this.cdr.markForCheck();
     });
 
     this.route.queryParams.subscribe(params => {
@@ -243,26 +276,35 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
           this.updateTrafficMetrics(this.routerTraffic.txBps, this.routerTraffic.rxBps);
         } else {
-          // Site belum terkonfigurasi atau tidak connected
+          // Site belum terkonfigurasi, atau terkonfigurasi tapi sedang tidak connected.
           this.routerTraffic.connected = false;
           this.routerTraffic.siteConfigured = data?.siteConfigured || false;
           this.routerTraffic.ip = data?.siteConfigured ? (data.ip || '—') : '—';
           this.routerTraffic.interface = data?.siteConfigured ? (data.interface || '—') : '—';
           this.routerTraffic.routerModel = data?.siteConfigured ? (data.routerModel || '') : '';
+          this.routerTraffic.error = data?.error || '';
           this.routerTraffic.txBps = 0;
           this.routerTraffic.rxBps = 0;
           this.routerTraffic.txMbps = 0;
           this.routerTraffic.rxMbps = 0;
           this.lastTx = '0 Kbps';
           this.lastRx = '0 Kbps';
-          this.trafficHistory = [];
-          this.chartBars = [];
+
+          // Hapus grafik HANYA saat site memang tidak dipantau. Site yang
+          // terkonfigurasi tapi router-nya sedang putus tetap mempertahankan
+          // grafik riwayatnya di bawah overlay "Koneksi ke router terputus" —
+          // menghapusnya tiap polling membuat grafik berkedip.
+          if (!this.routerTraffic.siteConfigured) {
+            this.trafficHistory = [];
+            this.chartBars = [];
+          }
         }
         this.cdr.markForCheck();
       })
       .catch(() => {
         this.routerTraffic.connected = false;
         this.routerTraffic.siteConfigured = false;
+        this.routerTraffic.error = 'Tidak dapat menghubungi backend monitoring.';
         this.lastTx = '0 Kbps';
         this.lastRx = '0 Kbps';
         this.trafficHistory = [];
@@ -272,14 +314,18 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   private updateTrafficMetrics(txBps: number, rxBps: number) {
-    this.trafficHistory.push({ txBps, rxBps });
+    this.trafficHistory.push({ txBps, rxBps, timestamp: new Date().toISOString() });
     if (this.trafficHistory.length > this.MAX_HISTORY) {
       this.trafficHistory.shift();
     }
 
     this.lastTx = this.formatBps(txBps);
     this.lastRx = this.formatBps(rxBps);
+    this.recomputeTrafficMetrics();
+  }
 
+  /** Hitung ulang puncak/rata-rata, skala, dan bar dari isi buffer saat ini. */
+  private recomputeTrafficMetrics() {
     // Hitung peak dan average dari total traffic (tx + rx) di window riwayat
     let maxCombinedBps = 0;
     let sumCombinedBps = 0;
@@ -379,6 +425,32 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     return `${mbps.toFixed(2)} Mbps`;
   }
 
+  /**
+   * Label skala sumbu Y pada posisi gridline (0 = dasar, 1 = puncak skala).
+   * Satuan hanya ditulis sekali di label paling atas agar tidak berulang.
+   */
+  axisTickLabel(fraction: number): string {
+    const value = this.scaleCeil * fraction;
+    const rounded = value >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
+    return fraction >= 1 ? `${rounded} ${this.chartYUnit}` : String(rounded);
+  }
+
+  /** Rentang waktu isi grafik saat ini, mis. `10:01:23 – 10:02:53`. */
+  get chartTimeRange(): string {
+    const first = this.trafficHistory[0]?.timestamp;
+    const last = this.trafficHistory[this.trafficHistory.length - 1]?.timestamp;
+    if (!first || !last) return '';
+    const hhmmss = (iso: string | null | undefined) => {
+      const d = iso ? new Date(iso) : null;
+      return d && !isNaN(d.getTime())
+        ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+        : '';
+    };
+    const from = hhmmss(first);
+    const to = hhmmss(last);
+    return from && to ? `${from} – ${to}` : '';
+  }
+
   get isClient(): boolean {
     return this.auth.isClient;
   }
@@ -440,7 +512,19 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       this.newDevice.siteLocation = site;
     }
     this.currentPage = 1;
-    // Reset buffer riwayat traffic saat berpindah site
+    this.resetTrafficHistory();
+    this.prefillTrafficHistory();
+    this.fetchRouterTraffic();
+    this.initDevices(); // Load devices for the new site
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Kosongkan buffer grafik beserta metriknya. Dipakai saat berpindah site dan
+   * saat router trafik site berganti — sample lama milik router/site lain tidak
+   * boleh ikut digambar.
+   */
+  private resetTrafficHistory() {
     this.trafficHistory = [];
     this.chartBars = [];
     this.routerTraffic.txMbps = 0;
@@ -451,9 +535,82 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.lastRx = '0 Kbps';
     this.peakRate = '0 Kbps';
     this.avgRate = '0 Kbps';
-    this.fetchRouterTraffic();
-    this.initDevices(); // Load devices for the new site
-    this.cdr.markForCheck();
+  }
+
+  /**
+   * Isi grafik dari riwayat tersimpan supaya langsung penuh saat site dipilih,
+   * bukan menunggu ±90 detik (45 sample x polling 2 detik) terkumpul sendiri.
+   * Sumbernya sample pengukuran RouterOS yang sama, hanya yang lebih lama.
+   */
+  private async prefillTrafficHistory(): Promise<void> {
+    const site = this.selectedSite;
+    if (!site) return;
+    // Site tanpa monitoring router tidak boleh digambar dari riwayat: history
+    // lamanya masih tersimpan sehingga grafik sempat muncul lalu dibersihkan oleh
+    // balasan `siteConfigured: false` — terbaca sebagai kedipan.
+    if (!hasTrafficRouterConfig(this.siteOf(site))) return;
+    try {
+      const res = await this.api.fetch(
+        `/api/router/history?site=${encodeURIComponent(site)}&raw=1&limit=${this.MAX_HISTORY}`
+      );
+      if (!res.ok) return;
+      const data = await res.json().catch(() => null);
+      const points: { txBps: number; rxBps: number }[] = Array.isArray(data?.data) ? data.data : [];
+      if (points.length === 0) return;
+
+      // Jangan timpa kalau user sudah pindah site selama request berjalan.
+      if (site !== this.selectedSite) return;
+
+      this.trafficHistory = points.slice(-this.MAX_HISTORY);
+      const newest = this.trafficHistory[this.trafficHistory.length - 1];
+      this.lastTx = this.formatBps(newest?.txBps || 0);
+      this.lastRx = this.formatBps(newest?.rxBps || 0);
+      this.recomputeTrafficMetrics();
+      this.cdr.markForCheck();
+    } catch (e) {
+      // Riwayat tidak tersedia -> grafik tetap terisi oleh polling berjalan.
+    }
+  }
+
+  // ── Hierarki lokasi untuk form perangkat ──────────────────────
+  private siteOf(site: string): any {
+    for (const p of this.projects) {
+      const found = (p.sites || []).find((s: any) => s.name === site);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  gedungOptions(site: string): string[] {
+    return (this.siteOf(site)?.gedungList || []).map((g: any) => g.name);
+  }
+
+  lantaiOptions(site: string, gedung: string): string[] {
+    const g = (this.siteOf(site)?.gedungList || []).find((x: any) => x.name === gedung);
+    return (g?.floors || []).map((f: any) => f.name);
+  }
+
+  onNewSiteLocationChange() {
+    this.newDevice.gedung = '';
+    this.newDevice.lantai = '';
+  }
+
+  onNewGedungChange() {
+    this.newDevice.lantai = '';
+  }
+
+  onEditGedungChange() {
+    this.editingDevice.lantai = '';
+  }
+
+  suggestDeviceName() {
+    const parts = [
+      this.newDevice.tipePerangkat,
+      this.newDevice.model || this.newDevice.brand,
+      this.newDevice.gedung,
+      this.newDevice.lantai
+    ].filter((p: string) => p && String(p).trim());
+    this.newDevice.nama = parts.join(' ');
   }
 
   clearStatusFilter() {
@@ -496,7 +653,39 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   openEditModal(device: MonitoringDevice) {
     this.activeDropdown = null;
     this.editingDevice = JSON.parse(JSON.stringify(device));
+    this.editOriginalIp = (device.ip || '').trim();
+    this.syncRouterHost = true;
+    this.initRouterBridgeForEdit(device);
     this.showEditModal = true;
+  }
+
+  /**
+   * Siapkan blok "Jadikan router trafik site ini" untuk modal Edit.
+   *
+   * Blok ini dulu hanya ada di modal Tambah, sehingga perangkat yang tipenya
+   * diperbaiki belakangan (mis. salah pilih Access Point lalu diganti Router)
+   * tidak punya jalan untuk menjadi router trafik site dari perangkatnya —
+   * pengguna harus mengaturnya manual di Project & Site.
+   */
+  private initRouterBridgeForEdit(device: MonitoringDevice) {
+    this.routerBridge = { enabled: false, port: 8729, user: '', password: '', interface: '' };
+    this.bridgeInterfaces = [];
+    this.bridgeIfaceLoading = false;
+    this.bridgeIfaceError = '';
+
+    if (device.type !== 'Router') return;
+
+    const cfg = this.siteOf(device.siteLocation || '')?.routerConfig;
+    if (cfg) {
+      this.routerBridge.port = Number(cfg.port) || 8729;
+      this.routerBridge.user = cfg.user || '';
+      this.routerBridge.interface = cfg.interface || '';
+    }
+    // Aktifkan bila site belum punya router sama sekali, atau memang perangkat
+    // inilah yang selama ini dipakai. Kalau site sudah punya router lain, biarkan
+    // pengguna yang memilih — jangan diam-diam merebut.
+    this.routerBridge.enabled =
+      !cfg?.host || String(cfg.host).trim() === (device.ip || '').trim();
   }
 
   closeEditModal() {
@@ -511,8 +700,49 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Satu IP hanya untuk satu perangkat per site; perangkat ini dikecualikan
+    // supaya tidak dianggap bentrok dengan dirinya sendiri.
+    const ipClash = findDuplicateIp(
+      this.devices,
+      this.editingDevice.ip,
+      this.editingDevice.siteLocation,
+      this.editingDevice._id || this.editingDevice.id
+    );
+    if (ipClash) {
+      this.showToastNotification(
+        `IP ${String(this.editingDevice.ip).trim()} sudah dipakai "${ipClash.name}" di site ${this.editingDevice.siteLocation}. Satu IP hanya untuk satu perangkat per site.`,
+        'alert'
+      );
+      return;
+    }
+
+    // Sama seperti modal Tambah: blok bridge hanya berlaku saat perangkatnya
+    // Router, dan tidak boleh disimpan setengah jadi.
+    const bridgeDraft = this.activeBridgeDraft(this.editingDevice.type, this.editingDevice.ip);
+    const bridgeProblem = bridgeDraftError(
+      bridgeDraft,
+      this.siteOf(this.editingDevice.siteLocation)?.routerConfig
+    );
+    if (bridgeProblem) {
+      this.showToastNotification(bridgeProblem, 'alert');
+      return;
+    }
+
     this.isSavingEdit = true;
     const devId = this.editingDevice._id || this.editingDevice.id;
+
+    // Diambil sebelum closeEditModal() mengosongkan editingDevice.
+    const sync = this.routerHostSync;
+    const shouldSync = this.syncRouterHost && sync.applicable;
+    const stopsTraffic = this.editStopsTraffic;
+    const stopsTrafficSite = this.editedDeviceOriginalSite();
+    const bridge = bridgeDraft.enabled
+      ? {
+          ip: (this.editingDevice.ip || '').trim(),
+          siteName: this.editingDevice.siteLocation || '',
+          model: [this.editingDevice.brand, this.editingDevice.model].filter(Boolean).join(' ')
+        }
+      : null;
 
     try {
       const res = await this.api.fetch(`/api/devices/${devId}`, {
@@ -533,6 +763,30 @@ export class MonitoringComponent implements OnInit, OnDestroy {
         }
         this.closeEditModal();
         this.showToastNotification('Perangkat berhasil diperbarui.', 'success');
+
+        if (bridge && bridge.ip && bridge.ip !== '—') {
+          // Perangkat ini dijadikan router trafik site. Host langsung menunjuk IP
+          // perangkatnya sendiri, jadi sinkron IP tidak diperlukan.
+          const saved = await this.bridgeRouterToSite(bridge.ip, bridge.siteName, bridge.model);
+          if (saved) {
+            this.resetTrafficHistory();
+            this.fetchRouterTraffic();
+            await this.verifyRouterBridge(bridge.siteName);
+          }
+        } else if (shouldSync) {
+          await this.syncRouterConfigHost(sync);
+        } else if (stopsTraffic && stopsTrafficSite) {
+          // Perangkat berhenti menjadi Router di site lamanya dan tidak ada
+          // Router lain yang tersisa -> monitoring trafiknya ikut berhenti,
+          // sama persis seperti saat perangkatnya dihapus.
+          const cleared = await this.clearRouterConfigHost(stopsTrafficSite);
+          if (cleared) {
+            this.showToastNotification(
+              `Monitoring trafik site ${stopsTrafficSite} dihentikan — perangkatnya bukan Router lagi.`,
+              'alert'
+            );
+          }
+        }
       } else {
         this.showToastNotification(data.error || 'Gagal menyimpan perubahan.', 'alert');
       }
@@ -540,6 +794,58 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       this.isSavingEdit = false;
       this.showToastNotification(`Error: ${e.message}`, 'alert');
     }
+  }
+
+  /**
+   * Perangkat Router ini menjadi router trafik site-nya hanya bila
+   * `routerConfig.host` site masih persis IP aslinya. Kalau IP-nya diubah dan
+   * konfirmasi diberikan, host ikut diganti supaya widget tidak terus menunjuk
+   * router lama walaupun tabel perangkat sudah benar.
+   */
+  get routerHostSync(): { applicable: boolean; siteName: string; oldHost: string; newHost: string } {
+    const none = { applicable: false, siteName: '', oldHost: '', newHost: '' };
+    const dev = this.editingDevice;
+    if (!dev || dev.type !== 'Router') return none;
+
+    const siteName = dev.siteLocation || '';
+    const newHost = (dev.ip || '').trim();
+    const oldHost = (this.editOriginalIp || '').trim();
+    if (!siteName || !newHost || !oldHost || newHost === oldHost) return none;
+
+    const site = this.siteOf(siteName);
+    const currentHost = site?.routerConfig?.host;
+    if (!currentHost || String(currentHost).trim() !== oldHost) return none;
+
+    return { applicable: true, siteName, oldHost, newHost };
+  }
+
+  /**
+   * Perbarui `routerConfig.host` site mengikuti IP baru perangkat Router-nya.
+   * Password router dipertahankan backend (payload tanpa password = pakai yang
+   * tersimpan), lalu widget disegarkan seketika.
+   */
+  private async syncRouterConfigHost(sync: { siteName: string; oldHost: string; newHost: string }): Promise<boolean> {
+    const project = this.projects.find(p => (p.sites || []).some((s: any) => s.name === sync.siteName));
+    const site = (project?.sites || []).find((s: any) => s.name === sync.siteName);
+    if (!project || !site) return false;
+
+    const sites = (project.sites || []).map((s: any) => s.name === sync.siteName
+      ? { ...s, routerConfig: { ...(s.routerConfig || {}), host: sync.newHost } }
+      : s);
+
+    if (!await this.saveProjectSites(project._id || project.id, sites)) return false;
+    this.projectService.refreshProjects();
+
+    // Sample lama berasal dari router yang berbeda, jadi jangan digabung.
+    this.resetTrafficHistory();
+    this.fetchRouterTraffic();
+
+    this.showToastNotification(
+      `Router trafik site ${sync.siteName} kini menunjuk ${sync.newHost}.`,
+      'success'
+    );
+    this.cdr.markForCheck();
+    return true;
   }
 
   // Management Modal
@@ -615,10 +921,76 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.deleteTargetDevice = null;
   }
 
+  /**
+   * Apakah menghapus perangkat ini akan menghentikan monitoring trafik site-nya?
+   *
+   * Aturannya: perangkat bertipe Router yang merupakan **perangkat Router
+   * terakhir** di site-nya. Sengaja TIDAK membandingkan IP dengan
+   * `routerConfig.host` — alamat sering salah ketik, dan yang menentukan "site
+   * ini masih punya router atau tidak" adalah keberadaan perangkatnya.
+   */
+  get deleteStopsTraffic(): boolean {
+    const dev = this.deleteTargetDevice;
+    if (!dev || dev.type !== 'Router') return false;
+
+    const siteName = dev.siteLocation || '';
+    // Tidak ada yang perlu dihentikan bila site memang tidak dipantau.
+    if (!hasTrafficRouterConfig(this.siteOf(siteName))) return false;
+
+    const devIdentifier = dev._id || dev.id;
+    const remaining = this.devices.filter(d => (d._id || d.id) !== devIdentifier);
+    return !hasRouterDeviceFor(siteName, remaining);
+  }
+
+  /**
+   * Apakah penyuntingan ini meninggalkan site-nya tanpa Router?
+   *
+   * Berlaku saat tipenya diganti menjauh dari Router, atau saat perangkatnya
+   * pindah ke site lain. Dampaknya sama dengan menghapus perangkatnya, jadi
+   * aturannya juga harus sama: monitoring trafik site ikut berhenti.
+   */
+  get editStopsTraffic(): boolean {
+    const dev = this.editingDevice;
+    if (!dev) return false;
+    const before = this.devices.find(d => (d._id || d.id) === (dev._id || dev.id));
+    if (!before) return false;
+    return leavesSiteWithoutRouter(
+      before,
+      { type: dev.type, siteLocation: dev.siteLocation },
+      this.devices
+    );
+  }
+
+  /** Site asal perangkat yang kehilangan router terakhirnya akibat edit ini. */
+  private editedDeviceOriginalSite(): string {
+    const dev = this.editingDevice;
+    if (!dev) return '';
+    const before = this.devices.find(d => (d._id || d.id) === (dev._id || dev.id));
+    return before?.siteLocation || dev.siteLocation || '';
+  }
+
+  /**
+   * Catatan konsistensi antara `routerConfig` site dan daftar perangkat.
+   * `null` bila selaras. Bisa membedakan "site tidak punya perangkat Router"
+   * dari "IP perangkatnya tidak cocok dengan host router trafik" — keduanya
+   * masalah berbeda dan penanganannya beda.
+   */
+  get trafficRouterNote(): string | null {
+    if (!this.routerTraffic.siteConfigured) return null;
+    return trafficRouterNoteFor(
+      this.selectedSite,
+      this.siteOf(this.selectedSite)?.routerConfig,
+      this.devices
+    );
+  }
+
   async confirmDelete() {
     if (!this.deleteTargetDevice) return;
     const dev = this.deleteTargetDevice;
     const devIdentifier = dev._id || dev.id;
+    // Diambil sebelum deleteTargetDevice dikosongkan.
+    const stopsTraffic = this.deleteStopsTraffic;
+    const siteName = dev.siteLocation || '';
 
     // Hapus dari state lokal
     this.devices = this.devices.filter(d => (d._id || d.id) !== devIdentifier);
@@ -642,13 +1014,51 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       status: 'Alert'
     });
 
-    if (this.selectedDevice && ((this.selectedDevice._id && this.selectedDevice._id === dev._id) || this.selectedDevice.id === dev.id)) {
+    if (this.selectedDevice && (this.selectedDevice._id || this.selectedDevice.id) === devIdentifier) {
       this.closeDetailModal();
     }
     this.showDeleteModal = false;
     this.showToastNotification(`Perangkat "${dev.name}" telah dihapus.`, 'alert');
     this.deleteTargetDevice = null;
     this.cdr.markForCheck();
+
+    if (stopsTraffic && siteName) {
+      const cleared = await this.clearRouterConfigHost(siteName);
+      if (cleared) {
+        this.showToastNotification(
+          `Monitoring trafik site ${siteName} dihentikan — router trafiknya ikut dihapus.`,
+          'alert'
+        );
+      }
+    }
+  }
+
+  /**
+   * Hentikan monitoring trafik site saat perangkat Router-nya dihapus.
+   * `routerConfig` adalah data terpisah dari record perangkat, jadi harus
+   * dikosongkan sendiri; kalau tidak, widget tetap memantau router yang sudah
+   * tidak terdaftar.
+   */
+  private async clearRouterConfigHost(siteName: string): Promise<boolean> {
+    const project = this.projects.find(p => (p.sites || []).some((s: any) => s.name === siteName));
+    const site = (project?.sites || []).find((s: any) => s.name === siteName);
+    if (!project || !site?.routerConfig) return false;
+
+    // Host dikosongkan, bukan objeknya dihapus: `preserveRouterPasswords` di
+    // backend mempertahankan `routerConfig` yang hilang dari payload, dan host
+    // kosong membuat `resolveRouterConfig` mengembalikan `null` -> "Belum
+    // Dikonfigurasi". Password router tetap tersimpan sehingga mudah diaktifkan lagi.
+    const sites = (project.sites || []).map((s: any) => s.name === siteName
+      ? { ...s, routerConfig: { ...(s.routerConfig || {}), host: '' } }
+      : s);
+
+    if (!await this.saveProjectSites(project._id || project.id, sites)) return false;
+    this.projectService.refreshProjects();
+
+    this.resetTrafficHistory();
+    this.fetchRouterTraffic();
+    this.cdr.markForCheck();
+    return true;
   }
 
   // Toast Notification System
@@ -677,7 +1087,114 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   // Add Device Modal
   openAddDeviceModal() {
     this.newDevice = this.getEmptyDevice();
+    this.routerBridge = { enabled: false, port: 8729, user: '', password: '', interface: '' };
+    this.bridgeInterfaces = [];
+    this.bridgeIfaceLoading = false;
+    this.bridgeIfaceError = '';
     this.showAddModal = true;
+  }
+
+  /**
+   * Muat daftar interface asli dari router yang diisi di form bridge.
+   * Router belum punya routerConfig tersimpan, jadi kredensialnya dikirim apa
+   * adanya; endpoint hanya membaca `/interface/print` + rate sekali jalan.
+   */
+  /** IP router yang dipakai blok bridge, dari modal yang sedang terbuka. */
+  get bridgeHost(): string {
+    return this.showEditModal
+      ? (this.editingDevice?.ip || '')
+      : (this.newDevice?.ipAddress || '');
+  }
+
+  /** Site yang diblok bridge, dari modal yang sedang terbuka. */
+  get bridgeSiteName(): string {
+    return this.showEditModal
+      ? (this.editingDevice?.siteLocation || '')
+      : (this.newDevice?.siteLocation || '');
+  }
+
+  /**
+   * Draft bridge yang benar-benar berlaku: hanya saat dicentang DAN perangkatnya
+   * bertipe Router.
+   *
+   * Gerbang ini wajib. Tanpa itu, blok yang tersembunyi karena tipe perangkat
+   * diganti setelah dicentang tetap ikut divalidasi — penyimpanan ditolak dengan
+   * pesan tentang field yang tidak terlihat — dan jalur simpan bisa menulis
+   * `routerConfig` site dari perangkat yang bukan Router, sehingga widget terus
+   * memantau router yang salah.
+   */
+  private activeBridgeDraft(deviceType: string | undefined, host: string | undefined): BridgeDraft {
+    if (!this.routerBridge.enabled || deviceType !== 'Router') return { enabled: false };
+    return { ...this.routerBridge, host };
+  }
+
+  /**
+   * Username/password boleh dikosongkan bila site sudah menyimpannya — backend
+   * menggabungkannya sendiri lewat `mergeProbeCredentials`.
+   */
+  get bridgeHasStoredCreds(): boolean {
+    const cfg = this.siteOf(this.bridgeSiteName)?.routerConfig;
+    return !!String(cfg?.user || '').trim() || !!cfg?.hasPassword;
+  }
+
+  async loadBridgeInterfaces(): Promise<void> {
+    const host = this.bridgeHost.trim();
+    const user = (this.routerBridge.user || '').trim();
+    if (!host || (!user && !this.bridgeHasStoredCreds)) {
+      this.bridgeInterfaces = [];
+      this.bridgeIfaceError = 'Isi IP Address perangkat dan username RouterOS dulu, lalu muat ulang.';
+      this.cdr.markForCheck();
+      return;
+    }
+
+    this.bridgeIfaceLoading = true;
+    this.bridgeIfaceError = '';
+    this.cdr.markForCheck();
+    try {
+      const res = await this.api.fetch('/api/router/interfaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          site: this.bridgeSiteName,
+          host,
+          port: Number(this.routerBridge.port) || 8729,
+          user,
+          password: this.routerBridge.password || '',
+          timeout: 3
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        this.bridgeInterfaces = [];
+        this.bridgeIfaceError = data.error || `Gagal memuat daftar interface (HTTP ${res.status}).`;
+        return;
+      }
+      this.bridgeInterfaces = data.data || [];
+      if (this.bridgeInterfaces.length === 0) {
+        this.bridgeIfaceError = 'Router tidak mengembalikan interface apa pun.';
+      }
+    } catch (e: any) {
+      this.bridgeInterfaces = [];
+      this.bridgeIfaceError = `Gagal menghubungi backend: ${e.message}`;
+    } finally {
+      this.bridgeIfaceLoading = false;
+      this.cdr.markForCheck();
+    }
+  }
+
+  /** Aktifkan bridge -> langsung muat daftar interface, tanpa menunggu tombol. */
+  onBridgeToggle() {
+    if (this.routerBridge.enabled) this.loadBridgeInterfaces();
+  }
+
+  /** Label option dropdown interface: nama, komentar, status link, dan rate live. */
+  bridgeIfaceLabel(i: RouterInterfaceOption): string {
+    const parts = [i.name];
+    if (i.comment) parts.push(i.comment);
+    if (i.disabled) parts.push('nonaktif');
+    else if (!i.running) parts.push('link down');
+    parts.push(`Rx ${this.formatBps(i.rxBps)} · Tx ${this.formatBps(i.txBps)}`);
+    return parts.join('  ·  ');
   }
 
   closeModal() {
@@ -695,6 +1212,31 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Satu IP hanya untuk satu perangkat per site. Perbandingan dibatasi per site
+    // karena gedung berbeda umumnya memakai rentang privat yang sama.
+    const ipClash = findDuplicateIp(this.devices, this.newDevice.ipAddress, this.newDevice.siteLocation);
+    if (ipClash) {
+      this.showToastNotification(
+        `IP ${String(this.newDevice.ipAddress).trim()} sudah dipakai "${ipClash.name}" di site ${this.newDevice.siteLocation}. Satu IP hanya untuk satu perangkat per site.`,
+        'alert'
+      );
+      return;
+    }
+
+    // Blok "jadikan router trafik site" hanya berlaku saat perangkatnya Router.
+    // Gerbang ini wajib: tipe bisa diganti setelah blok dicentang, dan tanpa
+    // gerbang ini blok tersembunyi itu masih menolak penyimpanan sekaligus bisa
+    // menulis routerConfig site dari perangkat yang bukan Router.
+    const bridgeDraft = this.activeBridgeDraft(this.newDevice.tipePerangkat, this.newDevice.ipAddress);
+    const bridgeProblem = bridgeDraftError(
+      bridgeDraft,
+      this.siteOf(this.newDevice.siteLocation)?.routerConfig
+    );
+    if (bridgeProblem) {
+      this.showToastNotification(bridgeProblem, 'alert');
+      return;
+    }
+
     const nextId = this.devices.length > 0
       ? Math.max(...this.devices.map(d => typeof d.id === 'number' ? d.id : 0)) + 1
       : 1;
@@ -707,9 +1249,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       brand: this.newDevice.brand || 'Ruijie',
       model: this.newDevice.model || 'RAP2200',
       mac: this.newDevice.macAddress || '—',
+      serialNumber: this.newDevice.serialNumber || '—',
       ip: this.newDevice.ipAddress || '—',
       client: '0',
-      signal: this.newDevice.tipePerangkat === 'Access Point' ? '-68 dBm' : '—',
+      signal: '—',
       gedung: this.newDevice.gedung || '—',
       lantai: this.newDevice.lantai || '—',
       ruangan: this.newDevice.ruangan || '—',
@@ -753,14 +1296,118 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       status: 'Normal'
     });
 
-    // Pastikan siteLocation sinkron jika user sedang melihat site tertentu
+    // Pastikan siteLocation sinkron jika user sedang melihat site tertentu.
+    // Wajib lewat selectSite() penuh: mutasi `selectedSite` langsung membuat
+    // tabel perangkat, buffer grafik, dan widget tidak sinkron.
     if (this.selectedSite && deviceToAdd.siteLocation !== this.selectedSite) {
-      this.selectedSite = deviceToAdd.siteLocation;
+      this.selectedSiteLabel = deviceToAdd.siteLocation;
+      this.selectSite(deviceToAdd.siteLocation);
     }
 
+    const bridged = bridgeDraft.enabled && !!deviceToAdd.ip && deviceToAdd.ip !== '—';
+
     this.showToastNotification(`Perangkat ${deviceToAdd.name} berhasil disimpan secara permanen.`, 'success');
+
+    if (bridged) {
+      const bridgeSaved = await this.bridgeRouterToSite(
+        deviceToAdd.ip,
+        deviceToAdd.siteLocation,
+        [this.newDevice.brand, this.newDevice.model].filter(Boolean).join(' ')
+      );
+      if (bridgeSaved) {
+        // Segarkan widget seketika tanpa menunggu interval polling 2 detik.
+        // Sample lama dibuang karena berasal dari router yang berbeda.
+        this.resetTrafficHistory();
+        this.fetchRouterTraffic();
+        // Tes koneksi sengaja paling akhir: showToastNotification menimpa toast
+        // sebelumnya, jadi kalau ditaruh sebelum notifikasi simpan hasilnya hilang.
+        await this.verifyRouterBridge(deviceToAdd.siteLocation);
+      }
+      // bridgeSaved === false -> peringatan sudah ditampilkan saveProjectSites().
+    }
+
     this.closeModal();
     this.currentPage = 1;
+    this.cdr.markForCheck();
+  }
+
+  /**
+   * Isi routerConfig site dari perangkat bertipe Router (opsional).
+   * Dipakai modal Tambah maupun modal Edit.
+   * Password pada site lain dipertahankan backend (payload password kosong = pakai yang tersimpan).
+   */
+  private async bridgeRouterToSite(deviceIp: string, siteName: string, routerModel: string): Promise<boolean> {
+    const project = this.projects.find(p => (p.sites || []).some((s: any) => s.name === siteName));
+    const site = (project?.sites || []).find((s: any) => s.name === siteName);
+    if (!project || !site) return false;
+
+    const sites = (project.sites || []).map((s: any) => s.name === siteName
+      ? {
+          ...s,
+          routerConfig: {
+            host: deviceIp,
+            // Hanya `password` yang punya semantik "pertahankan yang tersimpan" di
+            // backend, jadi port dan user harus dijaga di sini. Default 8729
+            // (api-ssl), bukan 8728 (api polos) yang sudah pasti gagal.
+            port: Number(this.routerBridge.port) || Number(s.routerConfig?.port) || 8729,
+            user: String(this.routerBridge.user || '').trim() || (s.routerConfig?.user || ''),
+            password: this.routerBridge.password || '',
+            interface: String(this.routerBridge.interface || '').trim(),
+            routerModel: routerModel || s.routerConfig?.routerModel || ''
+          }
+        }
+      : s);
+
+    if (!await this.saveProjectSites(project._id || project.id, sites)) return false;
+    this.projectService.refreshProjects();
+    return true;
+  }
+
+  /**
+   * Simpan daftar `sites` ke project. Mengembalikan `false` bila gagal, supaya
+   * pemanggil tidak menampilkan pesan sukses untuk perubahan yang tidak tersimpan.
+   */
+  private async saveProjectSites(projectId: string, sites: any[]): Promise<boolean> {
+    const ok = await new Promise<boolean>((resolve) => {
+      this.projectService.updateProject(projectId, { sites }).subscribe({
+        next: () => resolve(true),
+        error: () => resolve(false)
+      });
+    });
+    if (!ok) {
+      this.showToastNotification(
+        'Gagal menyimpan konfigurasi router site. Perubahan tidak tersimpan.',
+        'alert'
+      );
+    }
+    return ok;
+  }
+
+  /**
+   * Tes koneksi setelah `routerConfig` site terisi: panggil `/api/router/traffic`
+   * sekali lalu tampilkan hasilnya. Kegagalan wajib menyebut sebabnya, tidak diam.
+   */
+  private async verifyRouterBridge(siteName: string): Promise<void> {
+    try {
+      const res = await this.api.fetch(`/api/router/traffic?site=${encodeURIComponent(siteName)}`);
+      const data = await res.json().catch(() => ({}));
+      // Balasan gagal selalu membawa `error` (termasuk fallback cache), jadi
+      // jangan hanya mengandalkan `connected`.
+      const ok = !!data && !!data.connected && !data.error;
+      if (ok) {
+        this.showToastNotification(
+          `Router trafik site ${siteName} tersambung — ${data.ip} · ${data.interface}.`,
+          'success'
+        );
+      } else {
+        this.showToastNotification(
+          data?.error || `Router trafik site ${siteName} belum tersambung.`,
+          'alert'
+        );
+      }
+    } catch (e: any) {
+      this.showToastNotification(`Gagal memeriksa koneksi router: ${e.message}`, 'alert');
+    }
     this.cdr.markForCheck();
   }
 
@@ -771,21 +1418,12 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       nama: '',
       brand: '',
       model: '',
-      serialNumber: '',
       macAddress: '',
+      serialNumber: '',
       ipAddress: '',
-      gateway: '',
-      managementProvider: 'Ruijie Cloud',
-      externalDeviceId: '',
-      managementUrl: '',
       gedung: '',
       lantai: '',
-      ruangan: '',
-      capabilities: {
-        webManagement: true,
-        cli: true,
-        activityLogs: true
-      }
+      ruangan: ''
     };
   }
 

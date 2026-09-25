@@ -55,3 +55,38 @@ test('stripProjectSecrets removes router passwords without mutating the source',
     assert.ok(!('password' in project.sites[0].routerConfig));
     assert.strictEqual(existing.sites[0].routerConfig.password, 'secret-1');
 });
+
+test('stripProjectSecrets flags a stored password instead of silently hiding it', () => {
+    // Tanpa penanda ini frontend mengira tidak ada password tersimpan, sehingga
+    // kolom password yang dibiarkan kosong selalu dianggap kesalahan.
+    const project = stripProjectSecrets(existing);
+    assert.strictEqual(project.sites[0].routerConfig.hasPassword, true);
+    assert.strictEqual(project.sites[1].routerConfig.hasPassword, true);
+});
+
+test('stripProjectSecrets omits the marker when no password is stored', () => {
+    const project = stripProjectSecrets({
+        sites: [{ name: 'S', routerConfig: { host: '192.0.2.1', user: 'admin' } }]
+    });
+    assert.ok(!('hasPassword' in project.sites[0].routerConfig));
+});
+
+test('stripProjectSecrets tolerates sites without routerConfig and empty input', () => {
+    const project = stripProjectSecrets({ sites: [{ name: 'S' }] });
+    assert.ok(!('routerConfig' in project.sites[0]));
+    assert.deepStrictEqual(stripProjectSecrets({}), {});
+    assert.strictEqual(stripProjectSecrets(null), null);
+});
+
+test('preserveRouterPasswords drops the read-only hasPassword marker from the payload', () => {
+    const payload = {
+        sites: [{
+            _id: 's1',
+            name: 'Site Alpha',
+            routerConfig: { host: '192.0.2.1', hasPassword: true, password: '' }
+        }]
+    };
+    preserveRouterPasswords(payload, existing);
+    assert.ok(!('hasPassword' in payload.sites[0].routerConfig), 'marker must not be persisted');
+    assert.strictEqual(payload.sites[0].routerConfig.password, 'secret-1');
+});

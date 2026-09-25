@@ -13,7 +13,14 @@ function stripProjectSecrets(project) {
     if (!project) return project;
     const copy = JSON.parse(JSON.stringify(project));
     for (const site of copy.sites || []) {
-        if (site.routerConfig) delete site.routerConfig.password;
+        const cfg = site.routerConfig;
+        if (!cfg) continue;
+        // Penanda non-rahasia. `GET /api/projects` membuang password, sehingga
+        // frontend tidak punya cara mengetahui ada password tersimpan — dan
+        // kolom password yang dibiarkan kosong akan selalu dianggap kesalahan,
+        // memaksa password diketik ulang di setiap penyimpanan.
+        if (cfg.password) cfg.hasPassword = true;
+        delete cfg.password;
     }
     return copy;
 }
@@ -43,6 +50,9 @@ function preserveRouterPasswords(incomingProject, existingProject) {
             if (previous.routerConfig) site.routerConfig = previous.routerConfig;
             continue;
         }
+
+        // `hasPassword` hanya penanda baca dari `GET`; jangan ikut tersimpan.
+        delete site.routerConfig.hasPassword;
 
         if (!site.routerConfig.password && previous.routerConfig && previous.routerConfig.password) {
             site.routerConfig.password = previous.routerConfig.password;

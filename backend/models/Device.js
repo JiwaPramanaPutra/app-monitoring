@@ -27,6 +27,10 @@ const deviceSchema = new mongoose.Schema({
         type: String,
         default: '—'
     },
+    serialNumber: {
+        type: String,
+        default: '—'
+    },
     ip: {
         type: String,
         required: true,

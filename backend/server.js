@@ -16,6 +16,10 @@ const Laporan = require('./models/Laporan');
 const { sendTelegramAlert } = require('./services/telegram');
 const auth = require('./services/auth');
 const { stripDeviceSecrets, stripProjectSecrets, preserveRouterPasswords } = require('./services/redact');
+const { parseMonitorRates, mapInterfaces, mergeProbeCredentials } = require('./services/router-interfaces');
+const { buildOfflineFallback, toChartSamples } = require('./services/traffic-response');
+const { describeRouterError } = require('./services/router-errors');
+const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
 
@@ -42,7 +46,8 @@ app.use('/api', auth.requireAuth);
 app.use('/api', auth.requireEosForMutations);
 
 // Konfigurasi router default dari environment (opsional).
-// Dipakai hanya sebagai fallback untuk request tanpa site ber-routerConfig.
+// Hanya dipakai untuk request yang TIDAK menyebut site (router default).
+// Site yang dinamai wajib punya routerConfig sendiri — lihat resolveRouterConfig.
 // Tidak ada nilai default hardcoded: tanpa env lengkap, router dianggap belum dikonfigurasi.
 function getEnvRouterConfig() {
     const host = process.env.MIKROTIK_HOST;
@@ -69,19 +74,7 @@ async function resolveRouterConfig(site, ifaceOverride) {
         return envCfg ? { ...envCfg, interface: ifaceOverride || envCfg.interface } : null;
     }
 
-    let projectSite = null;
-    if (mongoose.connection.readyState === 1) {
-        const proj = await Project.findOne({ 'sites.name': site }).lean();
-        if (proj) {
-            projectSite = proj.sites.find(s => s.name === site);
-        }
-    } else {
-        const projects = storage.getLocalProjects();
-        for (const p of projects) {
-            const s = (p.sites || []).find(s => s.name === site);
-            if (s) { projectSite = s; break; }
-        }
-    }
+    const projectSite = await findProjectSite(site);
 
     if (projectSite && projectSite.routerConfig && projectSite.routerConfig.host) {
         const cfg = projectSite.routerConfig;
@@ -97,32 +90,49 @@ async function resolveRouterConfig(site, ifaceOverride) {
         };
     }
 
-    const envCfg = getEnvRouterConfig();
-    if (envCfg) {
-        return { ...envCfg, interface: ifaceOverride || envCfg.interface };
-    }
-
+    // Site memang diminta tapi belum punya routerConfig sendiri -> JANGAN diam-diam
+    // meminjam config env. Itu membuat `siteConfigured` selalu `true` dan site
+    // menampilkan angka router lain (terbaca sebagai data dummy), padahal yang benar
+    // adalah "Belum Dikonfigurasi" + tautan ke Project & Site.
     return null;
 }
 
-// Opsi TLS untuk koneksi RouterOS API (MikroTik pakai ADH cipher yang Node.js v24 matikan secara default)
+// Cari record site berdasarkan nama, dari Mongo bila tersambung, selain itu dari
+// storage lokal. Dipisah supaya arah fallback `resolveRouterConfig` bisa diuji.
+async function findProjectSite(site) {
+    if (mongoose.connection.readyState === 1) {
+        const proj = await Project.findOne({ 'sites.name': site }).lean();
+        return proj ? (proj.sites.find(s => s.name === site) || null) : null;
+    }
+
+    const projects = storage.getLocalProjects();
+    for (const p of projects) {
+        const s = (p.sites || []).find(s => s.name === site);
+        if (s) return s;
+    }
+    return null;
+}
+
+// Opsi TLS untuk koneksi RouterOS API.
+// - ciphers DEFAULT + SECLEVEL=0: tetap kompatibel dengan router lama (cipher warisan),
+//   tapi juga menerima router ber-sertifikat (ECDHE). Daftar ADH-only lama ditolak
+//   router ber-sertifikat dengan "TLS alert handshake failure".
 const MIKROTIK_TLS_OPTIONS = {
     rejectUnauthorized: false,
-    ciphers: 'ADH-AES128-SHA256:ADH-AES128-SHA:ADH-AES256-SHA256:ADH-AES256-SHA:@SECLEVEL=0',
+    ciphers: 'DEFAULT@SECLEVEL=0',
     minVersion: 'TLSv1'
 };
 
-// Cache koneksi dan state traffic terakhir
-let cachedTraffic = {
-    source: 'initial',
-    ip: '',
-    interface: '',
-    txMbps: 0,
-    rxMbps: 0,
-    txBps: 0,
-    rxBps: 0,
-    timestamp: new Date()
-};
+// Pesan gagal koneksi RouterOS yang selalu informatif kini ada di
+// `services/router-errors.js` — library sering melempar error tanpa `message`,
+// hanya `errno` numerik, sehingga pengguna sempat melihat keluaran mentah
+// `{"name":"RosException","errno":-4078}` tanpa tahu harus berbuat apa.
+
+// Cache traffic terakhir PER SITE.
+// Sebelumnya satu variabel global untuk semua site, sehingga site yang gagal
+// koneksi mewarisi ip/interface/angka site lain sambil tetap `connected: true` —
+// persis terbaca sebagai data dummy di widget.
+const cachedTrafficBySite = {};
 
 // Tracking kegagalan berturut-turut untuk mencegah false-positive downtime
 const siteFailureCounts = {};
@@ -179,7 +189,7 @@ async function fetchMikrotikTraffic(routerConfig) {
         throw new Error('No traffic data received from MikroTik');
     } catch (err) {
         try { await api.close(); } catch (e) { }
-        throw err;
+        throw new Error(describeRouterError(err, routerConfig));
     }
 }
 
@@ -246,7 +256,7 @@ app.get('/api/router/info', async (req, res) => {
         res.json({ success: true, data: resources[0] || {} });
     } catch (err) {
         try { await api.close(); } catch (e) { }
-        res.status(500).json({ success: false, error: err.message });
+        res.status(500).json({ success: false, error: describeRouterError(err, routerConfig) });
     }
 });
 
@@ -286,7 +296,7 @@ app.get('/api/router/traffic', async (req, res) => {
         liveData.site = site || 'Unknown';
         liveData.siteConfigured = true;
         liveData.routerModel = routerConfig.routerModel;
-        cachedTraffic = liveData;
+        cachedTrafficBySite[site || '_default'] = liveData;
 
         // Record sample in storage if site is configured
         if (site) {
@@ -310,57 +320,110 @@ app.get('/api/router/traffic', async (req, res) => {
             }
         }
 
-        // Jika sedang ada timeout singkat, kembalikan traffic cache terakhir dengan status offline notice
-        return res.json({
-            ...cachedTraffic,
-            site: site || 'Unknown',
-            siteConfigured: true,
+        // Koneksi gagal: laporkan apa adanya (`connected: false`) sambil tetap
+        // menampilkan identitas dan angka terakhir MILIK SITE INI sebagai kenangan.
+        // Jangan pernah mengambil cache site lain — itu yang terbaca sebagai data dummy.
+        return res.json(buildOfflineFallback({
+            cached: cachedTrafficBySite[site || '_default'],
+            site,
             routerModel: routerConfig.routerModel,
-            source: 'cached-fallback',
-            error: err.message,
-            timestamp: new Date()
-        });
+            error: err.message
+        }));
     }
 });
 
 /**
- * Endpoint: Daftar interface MikroTik beserta status
- * Berguna untuk mengetahui interface mana saja yang aktif di router
+ * Daftar interface router beserta status link dan rate live sekali jalan.
+ * Rate hanya diambil untuk interface yang link-up (satu `monitor-traffic once`
+ * per interface) supaya tetap ringan dipakai oleh form perangkat.
  */
-app.get('/api/router/interfaces', async (req, res) => {
-    const routerConfig = getEnvRouterConfig();
-    if (!routerConfig) {
-        return res.status(503).json({
-            success: false,
-            error: 'Router default belum dikonfigurasi. Atur MIKROTIK_HOST, MIKROTIK_USER, dan MIKROTIK_PASSWORD, atau konfigurasi router per site.'
-        });
-    }
-
+async function listRouterInterfaces(routerConfig) {
     const api = new RouterOSAPI({
         host: routerConfig.host,
         port: routerConfig.port,
         user: routerConfig.user,
         password: routerConfig.password,
-        timeout: 4,
+        timeout: routerConfig.timeout || 4,
         tls: MIKROTIK_TLS_OPTIONS
     });
     api.on('error', () => { });
 
     try {
         await api.connect();
-        const interfaces = await api.write('/interface/print');
+        const rawInterfaces = await api.write('/interface/print');
+
+        const ratesByName = {};
+        for (const i of rawInterfaces) {
+            if (i.running !== 'true' || !i.name) continue;
+            try {
+                const reply = await api.write('/interface/monitor-traffic', [
+                    `=interface=${i.name}`,
+                    '=once='
+                ]);
+                if (Array.isArray(reply) && reply[0]) {
+                    ratesByName[i.name] = parseMonitorRates(reply[0]);
+                }
+            } catch (e) {
+                // Interface yang gagal dimonitor dibiarkan tanpa rate, bukan gagal semua.
+            }
+        }
+
         await api.close().catch(() => { });
-        const result = interfaces.map(i => ({
-            name: i.name,
-            type: i.type,
-            running: i.running === 'true',
-            disabled: i.disabled === 'true',
-            comment: i.comment || '',
-            macAddress: i['mac-address'] || ''
-        }));
-        res.json({ success: true, data: result });
+        return mapInterfaces(rawInterfaces, ratesByName);
     } catch (err) {
         try { await api.close(); } catch (e) { }
+        throw new Error(describeRouterError(err, routerConfig));
+    }
+}
+
+/**
+ * Endpoint: Daftar interface MikroTik beserta status link + rate live.
+ * Dipakai form perangkat supaya nama interface dipilih dari router, bukan diketik.
+ *
+ * - GET  ?site=<nama-site>  -> dari routerConfig site, fallback config env
+ * - POST { host, port, user, password } -> dari kredensial yang BELUM tersimpan
+ *   (dipakai form Tambah Perangkat, sebelum routerConfig site terbentuk).
+ */
+app.get('/api/router/interfaces', async (req, res) => {
+    const routerConfig = await resolveRouterConfig(req.query.site);
+    if (!routerConfig) {
+        return res.status(503).json({
+            success: false,
+            error: req.query.site
+                ? `Site "${req.query.site}" belum memiliki konfigurasi router. Atur router trafik site-nya di Project & Site.`
+                : 'Router default belum dikonfigurasi. Atur MIKROTIK_HOST, MIKROTIK_USER, dan MIKROTIK_PASSWORD, atau konfigurasi router per site.'
+        });
+    }
+    try {
+        res.json({ success: true, data: await listRouterInterfaces(routerConfig) });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/router/interfaces', async (req, res) => {
+    const { site, host, port, user, password, timeout } = req.body || {};
+
+    // Form perangkat membiarkan field kosong dengan maksud "pakai yang tersimpan",
+    // jadi gabungkan dulu dengan `routerConfig` site-nya. Nilai yang diisi
+    // pengguna selalu menang atas yang tersimpan.
+    let stored = null;
+    if (site) {
+        const projectSite = await findProjectSite(site);
+        stored = (projectSite && projectSite.routerConfig) || null;
+    }
+
+    const routerConfig = mergeProbeCredentials({ host, port, user, password, timeout }, stored);
+    if (!routerConfig.host || !routerConfig.user) {
+        return res.status(400).json({
+            success: false,
+            error: 'Host dan username RouterOS wajib diisi, atau sudah tersimpan pada site tersebut.'
+        });
+    }
+
+    try {
+        res.json({ success: true, data: await listRouterInterfaces(routerConfig) });
+    } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 });
@@ -540,6 +603,23 @@ app.get('/api/router/history', async (req, res) => {
 
     try {
         const { source, samples } = await getRawSamples(site, startDate, endDate);
+
+        // Mode raw: sample apa adanya, tanpa agregasi — `limit` sample terbaru
+        // dalam urutan kronologis. Dipakai widget grafik supaya langsung terisi
+        // dari riwayat saat site dipilih.
+        const raw = req.query.raw;
+        if (raw !== undefined && raw !== '0' && raw !== 'false') {
+            const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 45, 500));
+            return res.json({
+                success: true,
+                site,
+                raw: true,
+                source,
+                totalSamples: samples.length,
+                data: toChartSamples(samples, limit)
+            });
+        }
+
         const aggregated = aggregateSamples(samples, period);
 
         res.json({
@@ -1030,8 +1110,31 @@ app.get('/api/devices', async (req, res) => {
     }
 });
 
+/**
+ * Tolak IP yang sudah dipakai perangkat lain di site yang sama.
+ *
+ * Dijaga di backend juga, bukan hanya di form: form hanya memuat perangkat satu
+ * site, sehingga memilih site lain di dalam modal membuat pemeriksaan di UI tidak
+ * melihat inventaris site tujuan. Mengembalikan pesan konflik, atau `null` bila aman.
+ */
+async function deviceIpClashError(body, excludeId) {
+    const ip = body && body.ip;
+    const site = body && body.siteLocation;
+    if (!isUsableDeviceIp(ip) || !site) return null;
+
+    const devices = mongoose.connection.readyState === 1
+        ? await Device.find({}).lean()
+        : storage.getLocalDevices();
+
+    const clash = findDeviceIpClash(devices, ip, site, excludeId);
+    return clash ? deviceIpClashMessage(clash, ip) : null;
+}
+
 app.post('/api/devices', async (req, res) => {
     try {
+        const clashError = await deviceIpClashError(req.body);
+        if (clashError) return res.status(409).json({ success: false, error: clashError });
+
         let newDevice;
         if (mongoose.connection.readyState === 1) {
             newDevice = new Device(req.body);
@@ -1048,6 +1151,9 @@ app.post('/api/devices', async (req, res) => {
 
 app.put('/api/devices/:id', async (req, res) => {
     try {
+        const clashError = await deviceIpClashError(req.body, req.params.id);
+        if (clashError) return res.status(409).json({ success: false, error: clashError });
+
         let updatedDevice;
         if (mongoose.connection.readyState === 1) {
             updatedDevice = await Device.findByIdAndUpdate(req.params.id, req.body, { new: true });
