@@ -578,6 +578,11 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     // dengan durasi nol.
     this.downtimeLog = this.allDowntimeEvents
       .filter(event => event.site === this.selectedSite)
+      // "Tidak terpantau" adalah kehilangan visibilitas aplikasi, bukan gangguan
+      // situs; pemilik memutuskan agar tidak tampil di log supaya laporan tidak
+      // terbaca sebagai banyak downtime oleh klien. Totalnya tetap ada di kolom
+      // "Tidak Terpantau" pada ringkasan uptime.
+      .filter(event => event.kind === 'interface-down')
       .filter(event => {
         const start = event.timestamp.getTime();
         const end = event.endTime ? new Date(event.endTime).getTime() : win.end.getTime();

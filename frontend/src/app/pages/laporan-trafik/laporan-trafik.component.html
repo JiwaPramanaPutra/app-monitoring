@@ -233,7 +233,7 @@
     <!-- Downtime log -->
     <div class="card" style="padding:0;overflow:hidden;">
       <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);">
-        <div style="font-size:12px;font-weight:500;">Log riwayat downtime &amp; keterlihatan <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ getPeriodLabel() }}</span></div>
+        <div style="font-size:12px;font-weight:500;">Log riwayat downtime <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ getPeriodLabel() }}</span></div>
       </div>
       <table *ngIf="downtimeLog.length > 0">
         <tr>
@@ -263,7 +263,7 @@
         </tr>
       </table>
       <div *ngIf="downtimeLog.length === 0" style="padding:24px;text-align:center;color:var(--muted);font-size:12px;">
-        Tidak ada downtime maupun keterlihatan yang hilang pada periode ini
+        Tidak ada downtime pada periode ini
       </div>
     </div>
   </div>

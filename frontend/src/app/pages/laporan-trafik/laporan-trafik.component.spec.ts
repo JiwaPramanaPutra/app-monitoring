@@ -113,3 +113,32 @@ describe('LaporanTrafikComponent.printReport', () => {
     printSpy.mockRestore();
   });
 });
+
+describe('LaporanTrafikComponent.filterDowntimeLog', () => {
+  function event(kind: string, when: Date) {
+    return {
+      site: 'Gizi',
+      kind,
+      reason: '',
+      start: '2026-09-26 21:00:00',
+      endTime: undefined,
+      duration: '46s',
+      color: '#B45309',
+      end: '—',
+      reported: false,
+      timestamp: when
+    } as any;
+  }
+
+  it('hanya menampilkan downtime asli, bukan kejadian "Tidak terpantau"', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.selectedSite = 'Gizi';
+    component.selectedPeriod = 'harian';
+    const now = new Date();
+    component.allDowntimeEvents = [event('unreachable', now), event('interface-down', now)];
+
+    component.filterDowntimeLog();
+
+    expect(component.downtimeLog.map(e => e.kind)).toEqual(['interface-down']);
+  });
+});
