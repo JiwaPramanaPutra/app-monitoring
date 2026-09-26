@@ -12,6 +12,7 @@ const DOWNTIME_FILE = path.join(DATA_DIR, 'downtime_events.json');
 const DEVICES_FILE = path.join(DATA_DIR, 'devices.json');
 const PROJECTS_FILE = path.join(DATA_DIR, 'projects.json');
 const LAPORAN_FILE = path.join(DATA_DIR, 'laporan.json');
+const DEVICE_PING_STATE_FILE = path.join(DATA_DIR, 'device_ping_state.json');
 
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -22,6 +23,9 @@ let downtimeEvents = [];
 let localDevices = [];
 let localProjects = [];
 let localLaporans = [];
+// State pinger perangkat (`fails`/`oks`/`status`/`lastNotifyAt`) —
+// dipersistensikan supaya restart backend tidak memutar ulang transisi yang sama.
+let devicePingState = {};
 const MAX_TRAFFIC_SAMPLES = 25000;
 
 function loadStoredData() {
@@ -79,6 +83,20 @@ function loadStoredData() {
         console.error('Failed to load laporan.json:', e.message);
         localLaporans = [];
     }
+
+    try {
+        if (fs.existsSync(DEVICE_PING_STATE_FILE)) {
+            const raw = fs.readFileSync(DEVICE_PING_STATE_FILE, 'utf8');
+            devicePingState = JSON.parse(raw);
+            // Objek, bukan array: file lama/korup tidak boleh menjatuhkan pinger.
+            if (!devicePingState || typeof devicePingState !== 'object' || Array.isArray(devicePingState)) {
+                devicePingState = {};
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load device_ping_state.json:', e.message);
+        devicePingState = {};
+    }
 }
 
 function saveLocalDevices() {
@@ -102,6 +120,18 @@ function saveLocalLaporans() {
         fs.writeFileSync(LAPORAN_FILE, JSON.stringify(localLaporans, null, 2), 'utf8');
     } catch (err) {
         console.error('Error saving local laporan:', err.message);
+    }
+}
+
+/**
+ * Simpan state pinger perangkat. Dipanggil sekali per siklus pinger (30 dtk),
+ * bukan per ping, jadi penulisan langsung tidak membebani disk.
+ */
+function saveDevicePingState() {
+    try {
+        fs.writeFileSync(DEVICE_PING_STATE_FILE, JSON.stringify(devicePingState, null, 2), 'utf8');
+    } catch (err) {
+        console.error('Error saving device ping state:', err.message);
     }
 }
 
@@ -371,6 +401,13 @@ module.exports = {
             return true;
         }
         return false;
-    }
+    },
+
+    // ── Device Ping State (persisten lintas restart) ──
+    getDevicePingState() {
+        return devicePingState;
+    },
+
+    saveDevicePingState
 };
 

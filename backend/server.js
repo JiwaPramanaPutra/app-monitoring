@@ -20,7 +20,7 @@ const { parseMonitorRates, mapInterfaces, mergeProbeCredentials } = require('./s
 const { buildOfflineFallback, toChartSamples } = require('./services/traffic-response');
 const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
-const { claimableStatus, advancePingState } = require('./services/device-status');
+const { claimableStatus, advancePingState, shouldNotify, deviceStateKey } = require('./services/device-status');
 const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan } = require('./services/laporan-utils');
@@ -703,10 +703,15 @@ startBackgroundTrafficCollector();
 
 /**
  * Tracking status ping perangkat untuk menghindari spam notifikasi Telegram.
- * Map: deviceIP -> { fails: 0, status: 'Online'|'Offline' }
+ * Map: deviceKey -> { fails, oks, status, lastNotifyAt }
+ *
+ * Di-key per identitas perangkat (bukan IP) dan dimuat dari penyimpanan lokal
+ * supaya restart backend tidak memutar ulang transisi up/down yang sama.
  */
-const devicePingState = {};
+const devicePingState = storage.getDevicePingState();
 const DEVICE_FAILURE_THRESHOLD = 3; // 3x gagal ping berturut-turut baru dianggap offline
+const DEVICE_SUCCESS_THRESHOLD = 2; // 2x sukses berturut-turut baru dianggap online lagi
+const DEVICE_NOTIFY_COOLDOWN_MS = 30 * 60 * 1000; // jarak minimum antar notifikasi per perangkat
 
 async function startBackgroundDevicePinger() {
     const INTERVAL_MS = 30000; // Tiap 30 detik
@@ -733,18 +738,48 @@ async function startBackgroundDevicePinger() {
                     alive = false;
                 }
 
+                // State per identitas perangkat, bukan per IP: dua perangkat
+                // ber-IP sama tidak boleh saling menimpa status.
+                const key = deviceStateKey(d);
+                if (!key) continue;
+
+                const prev = devicePingState[key];
                 // State awal "belum terpantau", bukan "Online": menganggapnya
                 // Online tanpa bukti membuat perangkat yang sejak awal tidak
                 // terjangkau ikut dicap Offline dan memicu notifikasi palsu.
-                const next = advancePingState(devicePingState[d.ip], alive, DEVICE_FAILURE_THRESHOLD);
-                devicePingState[d.ip] = { fails: next.fails, status: next.status };
+                const next = advancePingState(prev, alive, {
+                    failThreshold: DEVICE_FAILURE_THRESHOLD,
+                    okThreshold: DEVICE_SUCCESS_THRESHOLD
+                });
 
-                if (next.notify === 'online') {
-                    sendTelegramAlert(`✅ <b>[ONLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> sudah kembali normal.`);
-                } else if (next.notify === 'offline') {
-                    sendTelegramAlert(`🚨 <b>[OFFLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> tidak dapat dijangkau!\n(Gagal ping ${DEVICE_FAILURE_THRESHOLD} kali berturut-turut).`);
+                const entry = {
+                    fails: next.fails,
+                    oks: next.oks,
+                    status: next.status,
+                    lastNotifyAt: (prev && Number(prev.lastNotifyAt)) || 0
+                };
+
+                if (next.notify) {
+                    const now = Date.now();
+                    // Satu pesan per perangkat per cooldown; percobaan yang
+                    // tertahan tidak memperbarui lastNotifyAt supaya jendelanya
+                    // tetap utuh.
+                    if (shouldNotify(entry.lastNotifyAt, now, DEVICE_NOTIFY_COOLDOWN_MS)) {
+                        entry.lastNotifyAt = now;
+                        if (next.notify === 'online') {
+                            sendTelegramAlert(`✅ <b>[ONLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> sudah kembali normal.`);
+                        } else {
+                            sendTelegramAlert(`🚨 <b>[OFFLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> tidak dapat dijangkau!\n(Gagal ping ${DEVICE_FAILURE_THRESHOLD} kali berturut-turut).`);
+                        }
+                    }
                 }
+
+                devicePingState[key] = entry;
             }
+
+            // Persistensikan state sekali per siklus; restart berikutnya
+            // melanjutkan dari sini, bukan dari nol.
+            storage.saveDevicePingState();
         } catch (err) {
             console.error('Error in Background Device Pinger:', err.message);
         }
@@ -849,7 +884,7 @@ app.get('/api/devices/status', async (req, res) => {
             // bukti langsung, `Offline` hanya kalau perangkat pernah terlihat
             // hidup, sisanya "Tidak Terpantau". Sebelumnya endpoint ini
             // menyimpulkan sendiri dari satu paket yang tidak dijawab.
-            const status = claimableStatus(pingInfo.alive, (devicePingState[d.ip] || {}).status);
+            const status = claimableStatus(pingInfo.alive, (devicePingState[deviceStateKey(d)] || {}).status);
             const pingTime = pingInfo.timeMs !== null ? `${pingInfo.timeMs} ms` : null;
 
             // Reset nilai client dan signal ke N/A karena tidak dapat diambil secara real langsung dari AP
