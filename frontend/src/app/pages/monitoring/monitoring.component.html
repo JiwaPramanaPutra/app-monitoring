@@ -694,18 +694,30 @@
       </div>
     </div>
 
-    <div class="form-actions" style="margin-top:0;">
+    <div class="form-actions" style="margin-top:0;flex-direction:column;align-items:stretch;gap:8px;">
+      <div *ngFor="let action of managementActions(managementTargetDevice)" style="display:flex;flex-direction:column;gap:4px;">
+        <button type="button" class="btn" (click)="openManagementAction(action)"
+          style="display:inline-flex;align-items:center;justify-content:center;gap:6px;"
+          [class.btn-outline]="action.kind === 'winbox'">
+          <span>{{ action.label }}</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+          </svg>
+        </button>
+        <div *ngIf="action.note" style="font-size:10.5px;color:var(--muted);line-height:1.4;">
+          {{ action.note }}
+        </div>
+      </div>
+
+      <div *ngIf="managementActions(managementTargetDevice).length === 0"
+        style="font-size:11.5px;color:var(--muted);text-align:center;">
+        Tidak ada URL management yang bisa dibuka — isi IP perangkat atau kolom URL Management di form Edit.
+      </div>
+
       <button type="button" class="btn btn-outline" (click)="closeManagementModal()">
         Tutup
-      </button>
-      <button type="button" class="btn" (click)="openExternalManagement()"
-        style="display:inline-flex;align-items:center;gap:6px;">
-        <span>Buka Web Console</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-          <polyline points="15 3 21 3 21 9" />
-          <line x1="10" y1="14" x2="21" y2="3" />
-        </svg>
       </button>
     </div>
 

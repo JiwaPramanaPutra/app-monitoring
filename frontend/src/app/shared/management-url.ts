@@ -64,3 +64,60 @@ export function managementLabel(device: ManagementTarget | null | undefined): st
   const type = String(device.type ?? '').trim();
   return [brand, type].filter(Boolean).join(' ') || 'Perangkat';
 }
+
+export type ManagementActionKind = 'web' | 'cloud' | 'winbox';
+
+export interface ManagementAction {
+  kind: ManagementActionKind;
+  label: string;
+  url: string;
+  /** Batasan yang harus diketahui pengguna sebelum menekan tombolnya. */
+  note?: string;
+}
+
+/** Apakah URL ini menunjuk ke alamat IP, bukan nama domain? */
+function isIpHost(url: string): boolean {
+  return /^https?:\/\/\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/|$)/i.test(url);
+}
+
+/**
+ * Aksi management yang benar-benar tersedia untuk sebuah perangkat.
+ *
+ * Sengaja berupa daftar, bukan satu URL: jalur yang bisa diandalkan berbeda per
+ * merek, dan tidak semuanya bisa dijalankan browser.
+ *
+ * - **Web/Portal selalu aksi utama.** Kalau URL yang diisi pengguna menunjuk
+ *   domain (mis. portal Ruijie Cloud), labelnya "Buka Portal Cloud" — aplikasi
+ *   tidak bisa menebak tautan perangkat di cloud, hanya pengguna yang tahu.
+ * - **Winbox hanya untuk MikroTik, dan hanya sebagai aksi kedua.** Skema
+ *   `winbox://` tidak dikenali browser kecuali Windows sudah punya handler-nya;
+ *   di komputer pengembangan aplikasi ini handler itu TIDAK ada meski Winbox
+ *   terpasang (diverifikasi dari registri Windows). Menjadikannya satu-satunya
+ *   jalan berarti tombol yang tidak melakukan apa-apa.
+ */
+export function managementActions(device: ManagementTarget | null | undefined): ManagementAction[] {
+  const actions: ManagementAction[] = [];
+  if (!device) return actions;
+
+  const web = managementUrlFor(device);
+  if (web) {
+    actions.push({
+      kind: isIpHost(web) ? 'web' : 'cloud',
+      label: isIpHost(web) ? 'Buka Web Console' : 'Buka Portal Cloud',
+      url: web
+    });
+  }
+
+  const ip = String(device.ip ?? '').trim();
+  const brand = String(device.brand ?? '').trim().toLowerCase();
+  if (brand.includes('mikrotik') && isUsableIp(ip)) {
+    actions.push({
+      kind: 'winbox',
+      label: 'Buka di Winbox',
+      url: `winbox://${ip}`,
+      note: 'Berfungsi hanya bila Windows sudah punya handler winbox:// terpasang. Kalau belum, tombol ini tidak membuka apa pun — pakai Web Console (port 8291).'
+    });
+  }
+
+  return actions;
+}

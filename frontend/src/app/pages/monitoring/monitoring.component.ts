@@ -9,7 +9,7 @@ import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
 import { DeviceStatus, deviceStatusColor, deviceStatusIsDown } from '../../shared/device-status';
-import { managementLabel, managementUrlFor } from '../../shared/management-url';
+import { managementActions, managementLabel, managementUrlFor } from '../../shared/management-url';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
@@ -109,6 +109,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   readonly deviceStatusIsDown = deviceStatusIsDown;
   readonly managementUrlFor = managementUrlFor;
   readonly managementLabel = managementLabel;
+  readonly managementActions = managementActions;
 
   // Dropdown action menu
   activeDropdown: string | null = null;
@@ -948,20 +949,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       });
   }
 
-  openExternalManagement() {
-    if (!this.managementTargetDevice) return;
-
-    const url = managementUrlFor(this.managementTargetDevice);
-    if (!url) {
-      this.showToastNotification(
-        'URL management belum bisa ditentukan: isi IP perangkat atau kolom URL Management di form Edit.',
-        'alert'
-      );
-      return;
-    }
-
-    window.open(url, '_blank');
-    this.showToastNotification(`Membuka ${url}`, 'info');
+  openManagementAction(action: { url: string; label: string }) {
+    if (!action || !action.url) return;
+    window.open(action.url, '_blank');
+    this.showToastNotification(`Membuka ${action.label}: ${action.url}`, 'info');
   }
 
   // Delete Modal

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { managementLabel, managementUrlFor, normalizeManagementUrl } from './management-url';
+import { managementActions, managementLabel, managementUrlFor, normalizeManagementUrl } from './management-url';
 
 describe('normalizeManagementUrl', () => {
   it('membiarkan URL yang sudah berskema', () => {
@@ -71,5 +71,65 @@ describe('managementLabel', () => {
     expect(managementLabel({})).toBe('Perangkat');
     expect(managementLabel({ brand: 'MikroTik' })).toBe('MikroTik');
     expect(managementLabel(null)).toBe('');
+  });
+});
+
+describe('managementActions', () => {
+  it('selalu menawarkan web console sebagai aksi utama untuk perangkat ber-IP', () => {
+    const acts = managementActions({ ip: '172.16.3.5', brand: 'TP-Link', type: 'Access Point' });
+
+    expect(acts.length).toBe(1);
+    expect(acts[0].kind).toBe('web');
+    expect(acts[0].label).toBe('Buka Web Console');
+    expect(acts[0].url).toBe('http://172.16.3.5');
+  });
+
+  it('menawarkan Winbox HANYA untuk MikroTik, sebagai aksi kedua', () => {
+    const acts = managementActions({ ip: '223.27.147.18', brand: 'MikroTik', type: 'Router' });
+
+    expect(acts.length).toBe(2);
+    expect(acts[0].kind).toBe('web');
+    expect(acts[1].kind).toBe('winbox');
+    expect(acts[1].url).toBe('winbox://223.27.147.18');
+  });
+
+  it('catatan Winbox wajib ada dan menyebut syaratnya', () => {
+    // Handler winbox:// TIDAK terdaftar di Windows ini meski Winbox terpasang;
+    // tanpa catatan ini tombolnya jadi tombol yang tidak melakukan apa-apa.
+    const [_, winbox] = managementActions({ ip: '223.27.147.18', brand: 'MikroTik' });
+
+    expect(winbox.note).toBeTruthy();
+    expect(String(winbox.note)).toContain('handler winbox://');
+  });
+
+  it('merek non-MikroTik tidak pernah mendapat aksi Winbox', () => {
+    for (const brand of ['TP-Link', 'Ruijie', 'Cisco', '', 'Huawei']) {
+      const acts = managementActions({ ip: '10.0.0.1', brand });
+      expect(acts.some(a => a.kind === 'winbox')).toBe(false);
+    }
+  });
+
+  it('URL berdomain dilabeli Portal Cloud, bukan Web Console', () => {
+    // Ruijie Cloud tidak bisa ditebak aplikasi: tautannya milik pengguna.
+    const acts = managementActions({
+      ip: '172.16.2.25',
+      brand: 'Ruijie',
+      managementUrl: 'https://cloud.ruijienetworks.com/dashboard'
+    });
+
+    expect(acts[0].kind).toBe('cloud');
+    expect(acts[0].label).toBe('Buka Portal Cloud');
+    expect(acts[0].url).toBe('https://cloud.ruijienetworks.com/dashboard');
+  });
+
+  it('IP yang tidak terpakai tidak menghasilkan aksi apa pun', () => {
+    expect(managementActions({ ip: '—', brand: 'MikroTik' })).toEqual([]);
+    expect(managementActions({})).toEqual([]);
+    expect(managementActions(null)).toEqual([]);
+  });
+
+  it('MikroTik tanpa IP tetap tidak dapat aksi Winbox', () => {
+    const acts = managementActions({ ip: 'n/a', brand: 'MikroTik' });
+    expect(acts).toEqual([]);
   });
 });
