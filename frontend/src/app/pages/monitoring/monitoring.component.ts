@@ -9,6 +9,7 @@ import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
 import { DeviceStatus, deviceStatusColor, deviceStatusIsDown } from '../../shared/device-status';
+import { managementLabel, managementUrlFor } from '../../shared/management-url';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
@@ -21,6 +22,8 @@ export interface MonitoringDevice {
   model: string;
   mac: string;
   serialNumber?: string;
+  /** URL console manajemen, mis. `http://172.16.1.1:8291` untuk RouterOS. */
+  managementUrl?: string;
   ip: string;
   client: string;
   pingTime?: string;
@@ -104,6 +107,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   readonly deviceKey = deviceKey;
   readonly deviceStatusColor = deviceStatusColor;
   readonly deviceStatusIsDown = deviceStatusIsDown;
+  readonly managementUrlFor = managementUrlFor;
+  readonly managementLabel = managementLabel;
 
   // Dropdown action menu
   activeDropdown: string | null = null;
@@ -945,9 +950,18 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   openExternalManagement() {
     if (!this.managementTargetDevice) return;
-    const url = `http://${this.managementTargetDevice.ip}`;
+
+    const url = managementUrlFor(this.managementTargetDevice);
+    if (!url) {
+      this.showToastNotification(
+        'URL management belum bisa ditentukan: isi IP perangkat atau kolom URL Management di form Edit.',
+        'alert'
+      );
+      return;
+    }
+
     window.open(url, '_blank');
-    this.showToastNotification(`Membuka Web Console ${this.managementTargetDevice.ip}...`, 'info');
+    this.showToastNotification(`Membuka ${url}`, 'info');
   }
 
   // Delete Modal
@@ -1284,7 +1298,9 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
     const deviceToAdd: MonitoringDevice = {
       id: nextId,
-      status: 'Online',
+      // Belum ada yang mengukur perangkat ini, jadi jangan mengklaim Online.
+      // Status sebenarnya datang dari /api/devices/status pada refresh berikutnya.
+      status: 'Tidak Terpantau',
       type: this.newDevice.tipePerangkat,
       name: this.newDevice.nama.trim(),
       brand: this.newDevice.brand || 'Ruijie',
@@ -1292,6 +1308,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       mac: this.newDevice.macAddress || '—',
       serialNumber: this.newDevice.serialNumber || '—',
       ip: this.newDevice.ipAddress || '—',
+      managementUrl: this.newDevice.managementUrl || '',
       client: '0',
       signal: '—',
       gedung: this.newDevice.gedung || '—',
@@ -1462,6 +1479,7 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       macAddress: '',
       serialNumber: '',
       ipAddress: '',
+      managementUrl: '',
       gedung: '',
       lantai: '',
       ruangan: ''

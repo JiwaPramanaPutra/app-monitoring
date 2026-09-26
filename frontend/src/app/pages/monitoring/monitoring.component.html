@@ -509,6 +509,16 @@
         </div>
       </div>
 
+      <!-- Row: URL Management -->
+      <div class="form-group">
+        <label>URL Management (opsional)</label>
+        <input type="text" [(ngModel)]="editingDevice.managementUrl" name="managementUrl"
+          placeholder="mis. RouterOS: 172.16.1.1:8291 · Ruijie: https://172.16.2.1">
+        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">
+          Kosongkan untuk menebak dari merek: MikroTik dipetakan ke port 8291 (WebFig), Ruijie ke https.
+        </div>
+      </div>
+
       <!-- Row: Gedung, Lantai, Ruangan -->
       <div class="form-row form-row-3">
         <div class="form-group">
@@ -656,16 +666,12 @@
       <div
         style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px;">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px;">
-          <span style="color:var(--muted);">Provider:</span>
-          <span style="font-weight:600;color:var(--primary);">Ruijie Cloud / Web GUI</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px;">
-          <span style="color:var(--muted);">Web GUI URL:</span>
-          <span class="mono" style="font-weight:500;">http://{{ managementTargetDevice.ip }}</span>
+          <span style="color:var(--muted);">Perangkat:</span>
+          <span style="font-weight:600;color:var(--primary);">{{ managementLabel(managementTargetDevice) }}</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:12px;">
-          <span style="color:var(--muted);">Status Layanan:</span>
-          <span style="color:#5B7A52;font-weight:500;">● Online (Port 80/443 aktif)</span>
+          <span style="color:var(--muted);">Web Console:</span>
+          <span class="mono" style="font-weight:500;">{{ managementUrlFor(managementTargetDevice) || '(belum diisi)' }}</span>
         </div>
       </div>
 
@@ -820,6 +826,14 @@
       <div class="form-group">
         <label>Serial Number (SN)</label>
         <input type="text" [(ngModel)]="newDevice.serialNumber" placeholder="opsional">
+      </div>
+      <div class="form-group">
+        <label>URL Management (opsional)</label>
+        <input type="text" [(ngModel)]="newDevice.managementUrl"
+          placeholder="mis. RouterOS: 172.16.1.1:8291 · Ruijie: https://172.16.2.1">
+        <div style="font-size:10.5px;color:var(--muted);margin-top:4px;">
+          Kosongkan untuk menebak dari merek: MikroTik dipetakan ke port 8291 (WebFig), Ruijie ke https.
+        </div>
       </div>
     </div>
 
