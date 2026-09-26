@@ -98,6 +98,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private deviceStatusTimer: any = null;
   readonly DEVICE_REFRESH_INTERVAL = 30000;
   private readonly MAX_HISTORY = 45;
+  /** Prefill riwayat sedang berjalan — poll live ditahan agar grafik tidak kedip. */
+  private prefillInFlight = false;
+  /** Sample live yang tiba selagi prefill berjalan; digabung setelah prefill selesai. */
+  private pendingLive: { txBps: number; rxBps: number; timestamp: string }[] = [];
 
   // Pagination
   currentPage = 1;
@@ -342,6 +346,18 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   private updateTrafficMetrics(txBps: number, rxBps: number) {
+    // Riwayat site ini belum siap: tahan sample supaya grafik tidak sempat
+    // menggambar satu batang lalu ditimpa riwayat (kedipan saat pindah site).
+    if (this.prefillInFlight) {
+      this.lastTx = this.formatBps(txBps);
+      this.lastRx = this.formatBps(rxBps);
+      this.pendingLive.push({ txBps, rxBps, timestamp: new Date().toISOString() });
+      if (this.pendingLive.length > this.MAX_HISTORY) {
+        this.pendingLive.shift();
+      }
+      return;
+    }
+
     this.trafficHistory.push({ txBps, rxBps, timestamp: new Date().toISOString() });
     if (this.trafficHistory.length > this.MAX_HISTORY) {
       this.trafficHistory.shift();
@@ -555,6 +571,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private resetTrafficHistory() {
     this.trafficHistory = [];
     this.chartBars = [];
+    this.prefillInFlight = false;
+    this.pendingLive = [];
     this.routerTraffic.txMbps = 0;
     this.routerTraffic.rxMbps = 0;
     this.routerTraffic.txBps = 0;
@@ -569,6 +587,10 @@ export class MonitoringComponent implements OnInit, OnDestroy {
    * Isi grafik dari riwayat tersimpan supaya langsung penuh saat site dipilih,
    * bukan menunggu ±90 detik (45 sample x polling 2 detik) terkumpul sendiri.
    * Sumbernya sample pengukuran RouterOS yang sama, hanya yang lebih lama.
+   *
+   * Selama permintaan ini berjalan, sample live dari polling ditahan
+   * (`pendingLive`) supaya grafik tidak sempat menggambar satu batang lalu
+   * ditimpa riwayat — kedipan yang terlihat saat pindah site.
    */
   private async prefillTrafficHistory(): Promise<void> {
     const site = this.selectedSite;
@@ -577,27 +599,49 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     // lamanya masih tersimpan sehingga grafik sempat muncul lalu dibersihkan oleh
     // balasan `siteConfigured: false` — terbaca sebagai kedipan.
     if (!hasTrafficRouterConfig(this.siteOf(site))) return;
+
+    this.prefillInFlight = true;
     try {
       const res = await this.api.fetch(
         `/api/router/history?site=${encodeURIComponent(site)}&raw=1&limit=${this.MAX_HISTORY}`
       );
       if (!res.ok) return;
       const data = await res.json().catch(() => null);
-      const points: { txBps: number; rxBps: number }[] = Array.isArray(data?.data) ? data.data : [];
-      if (points.length === 0) return;
 
       // Jangan timpa kalau user sudah pindah site selama request berjalan.
       if (site !== this.selectedSite) return;
 
-      this.trafficHistory = points.slice(-this.MAX_HISTORY);
+      const points: { txBps: number; rxBps: number }[] = Array.isArray(data?.data) ? data.data : [];
+      // Riwayat + sample live yang tertahan digambar sekali, dengan skala sama.
+      this.trafficHistory = [...points, ...this.pendingLive].slice(-this.MAX_HISTORY);
+      this.pendingLive = [];
       const newest = this.trafficHistory[this.trafficHistory.length - 1];
       this.lastTx = this.formatBps(newest?.txBps || 0);
       this.lastRx = this.formatBps(newest?.rxBps || 0);
       this.recomputeTrafficMetrics();
       this.cdr.markForCheck();
     } catch (e) {
-      // Riwayat tidak tersedia -> grafik tetap terisi oleh polling berjalan.
+      // Riwayat tidak tersedia -> sample tertahan digambar oleh finally.
+    } finally {
+      if (site === this.selectedSite) {
+        this.prefillInFlight = false;
+        this.flushPendingLive();
+      }
     }
+  }
+
+  /** Gambar sample live yang tertahan saat prefill (riwayat kosong/gagal). */
+  private flushPendingLive(): void {
+    if (this.pendingLive.length === 0) return;
+    for (const p of this.pendingLive) {
+      this.trafficHistory.push(p);
+    }
+    while (this.trafficHistory.length > this.MAX_HISTORY) {
+      this.trafficHistory.shift();
+    }
+    this.pendingLive = [];
+    this.recomputeTrafficMetrics();
+    this.cdr.markForCheck();
   }
 
   // ── Hierarki lokasi untuk form perangkat ──────────────────────
