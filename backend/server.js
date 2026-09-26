@@ -1201,11 +1201,20 @@ app.get('/api/projects/tree', async (req, res) => {
 app.post('/api/projects', async (req, res) => {
     try {
         if (mongoose.connection.readyState === 1) {
-            const newProject = new Project(req.body);
+            // Penyaring yang SAMA dengan PUT. Tanpa padanan, `preserveRouterPasswords`
+            // murni membersihkan penanda baca `hasPassword` — dulu jalur ini tidak
+            // memanggilnya sama sekali, sehingga project baru menyimpan apa pun yang
+            // dikirim klien. `normalizeNestedIds` membuang id sementara `temp_` yang
+            // membuat Mongoose melempar CastError di mode Mongo.
+            const payload = preserveRouterPasswords(req.body, null);
+            normalizeNestedIds(payload, 'mongo');
+            const newProject = new Project(payload);
             await newProject.save();
             return res.json({ success: true, project: stripProjectSecrets(newProject.toObject()) });
         } else {
-            const newProject = storage.saveLocalProject(req.body);
+            const payload = preserveRouterPasswords(req.body, null);
+            normalizeNestedIds(payload, 'local');
+            const newProject = storage.saveLocalProject(payload);
             return res.json({ success: true, project: stripProjectSecrets(newProject) });
         }
     } catch (err) {
