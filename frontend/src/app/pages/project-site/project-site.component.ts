@@ -31,7 +31,7 @@ export class ProjectSiteComponent implements OnInit {
 
   // Forms
   projectForm: any = { name: '', code: '', description: '' };
-  siteForm: any = { name: '', code: '', routerConfig: { host: '', port: 8728, displayPort: 8291, user: '', password: '', interface: 'ether1' } };
+  siteForm: any = { name: '', code: '', routerConfig: { host: '', port: 8729, displayPort: 8291, user: '', password: '', interface: 'ether1' } };
   gedungForm: any = { name: '', code: '' };
   lantaiForm: any = { name: '' };
 
@@ -146,10 +146,10 @@ export class ProjectSiteComponent implements OnInit {
     this.isEditing = !!site;
     if (site) {
       this.siteForm = { ...site };
-      if (!this.siteForm.routerConfig) this.siteForm.routerConfig = { host: '', port: 8728, displayPort: 8291, user: '', password: '', interface: 'ether1' };
+      if (!this.siteForm.routerConfig) this.siteForm.routerConfig = { host: '', port: 8729, displayPort: 8291, user: '', password: '', interface: 'ether1' };
       this.editId = site._id;
     } else {
-      this.siteForm = { name: '', code: '', routerConfig: { host: '', port: 8728, displayPort: 8291, user: '', password: '', interface: 'ether1' } };
+      this.siteForm = { name: '', code: '', routerConfig: { host: '', port: 8729, displayPort: 8291, user: '', password: '', interface: 'ether1' } };
     }
     this.showSiteModal = true;
   }

@@ -40,7 +40,10 @@ const siteSchema = new mongoose.Schema({
     // Konfigurasi router MikroTik per-site (opsional untuk live traffic monitoring)
     routerConfig: {
         host: { type: String, default: '' },
-        port: { type: Number, default: 8728 },
+        // Default 8729 (api-ssl): setiap koneksi backend memakai TLS, jadi port
+        // api biasa (8728) tidak akan pernah bisa dipakai. Semua site yang ada
+        // di aplikasi ini memakai 8729.
+        port: { type: Number, default: 8729 },
         displayPort: { type: Number, default: 8291 },
         user: { type: String, default: '' },
         password: { type: String, default: '' },

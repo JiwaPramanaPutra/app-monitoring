@@ -70,7 +70,7 @@ function mergeProbeCredentials(probe, stored) {
 
     return {
         host: pick(p.host, s.host) || '',
-        port: toInt(pick(p.port, s.port), 8728) || 8728,
+        port: toInt(pick(p.port, s.port), 8729) || 8729,
         user: pick(p.user, s.user) || '',
         password: pick(p.password, s.password) || '',
         timeout: toInt(pick(p.timeout, s.timeout), 3) || 3,

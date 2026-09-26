@@ -140,16 +140,29 @@ test('mergeProbeCredentials falls back to stored host, user, port and model', ()
 
 test('mergeProbeCredentials applies sane defaults when nothing is stored', () => {
     const out = mergeProbeCredentials({ host: '192.0.2.1', user: 'admin', password: 'x' }, null);
-    assert.strictEqual(out.port, 8728);
+    assert.strictEqual(out.port, 8729);
     assert.strictEqual(out.timeout, 3);
     assert.strictEqual(out.password, 'x');
     assert.strictEqual(out.routerModel, '');
 });
 
+test('default port adalah api-ssl (8729), bukan 8728 yang tidak akan pernah connect', () => {
+    // Setiap koneksi backend memakai TLS, jadi port api biasa (8728) selalu gagal.
+    // Test ini yang menahan orang mengembalikan defaultnya.
+    const out = mergeProbeCredentials({ host: '192.0.2.9', user: 'admin' }, null);
+    assert.strictEqual(out.port, 8729);
+    assert.notStrictEqual(out.port, 8728);
+});
+
+test('port yang dikirim eksplisit tetap dihormati', () => {
+    const out = mergeProbeCredentials({ host: '192.0.2.9', user: 'admin', port: 9999 }, null);
+    assert.strictEqual(out.port, 9999);
+});
+
 test('mergeProbeCredentials tolerates missing or non-object input', () => {
     for (const bad of [undefined, null, 'teks', 42]) {
         assert.deepStrictEqual(mergeProbeCredentials(bad, bad), {
-            host: '', port: 8728, user: '', password: '', timeout: 3, routerModel: ''
+            host: '', port: 8729, user: '', password: '', timeout: 3, routerModel: ''
         });
     }
 });

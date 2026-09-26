@@ -7,7 +7,6 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-
 ### F-25 [P2] unverified - Restart-policy starts can still bypass Mongo readiness and silently use JSON storage
 
 **File:** docker-compose.yml:4,15,24-28; backend/server.js:27-33,73
@@ -105,13 +104,13 @@ Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): the i
 Re-examined at 901504f (2026-09-25, /audit scope: full; lens: quality): `fetchMikrotikTraffic` still parses `rx-bits-per-second`/`tx-bits-per-second` inline with `parseInt` and no numeric fallback (`backend/server.js:170-171`), and the collector's idle gate (`:903`) reads those same raw numbers, while the tested `parseMonitorRates` is used only by `listRouterInterfaces`. Status stays `open` (P3).
 
 
-### F-46 [P3] open - Project & Site form still defaults the router port to 8728 while every backend connection uses TLS
+### F-46 [P3] fixed - Project & Site form still defaults the router port to 8728 while every backend connection uses TLS
 
 **File:** frontend/src/app/pages/project-site/project-site.component.ts:34,139,142; backend/server.js:145-151,242-248,341-347
 **Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
 **Why it matters:** Every backend RouterOS connection passes `tls: MIKROTIK_TLS_OPTIONS` (`backend/server.js:151,248,347`), so a `routerConfig` saved from the Project & Site form with its default port 8728 (plain api) can never connect; `resolveRouterConfig` also falls back to 8728 when the stored port is missing (`server.js:83`). This is the same wrong-default class batch 2 removed from the device bridge form (F-29), still present in the pre-existing Project & Site form (outside this delta's touched files, recorded per the identity/default sweep). The user only learns from the traffic widget's connection-failure message.
 **Suggested fix:** Default the site form's port to 8729 (api-ssl), matching the device bridge form. This changes a shipped default, so it needs the user's explicit decision and is not an automatic repair.
-**Resolution:**
+**Resolution:** Repaired 2026-09-26 on `fix/default-port-tls`, on the owner's explicit decision in this session ("pakai default 8729"). The 8728 default was in eight functional places, not the three the finding named: the site form (`project-site.component.ts:34,149,152`), the Project schema (`models/Project.js:44`), `getEnvRouterConfig` (`server.js:63`), `resolveRouterConfig` (`server.js:86`), the collector's own config copy (`server.js:863`), and `mergeProbeCredentials` (`services/router-interfaces.js:73`). All eight now use 8729 (api-ssl), each with a short comment saying why 8728 can never work. Two existing tests in `backend/test/router-interfaces.test.js` had been pinning the old 8728 default, so they were corrected too, and a new case asserts the default is 8729 and explicitly not 8728. Evidence that it bites: mutating `mergeProbeCredentials` back to 8728 fails that test. No stored data was touched - all five live sites already used 8729. `npm run verify` green: 168/168 backend, 116/116 frontend, Angular build OK. Awaiting re-review.
 Re-examined at 901504f (2026-09-25, /audit scope: full; lens: quality): the wrong default is in three places, not one - `project-site.component.ts:34,139,142` still seeds `port: 8728`, `backend/models/Project.js:43` defaults `routerConfig.port` to 8728, and `resolveRouterConfig` falls back to 8728 (`backend/server.js:84`), while every connection passes `tls: MIKROTIK_TLS_OPTIONS` (`:152,344,824`). Status stays `open` (P3); changing a shipped default needs the user's decision.
 Re-confirmed at 0604fea (2026-09-26, /audit scope: full; lens: quality): the 8728 default is still in four places - `project-site.component.ts:34,139,142` and `backend/models/Project.js:43` (`default: 8728`) - while every connection passes `tls: MIKROTIK_TLS_OPTIONS`. Status stays `open` (P3).
 

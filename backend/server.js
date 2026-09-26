@@ -60,7 +60,7 @@ function getEnvRouterConfig() {
 
     return {
         host,
-        port: parseInt(process.env.MIKROTIK_PORT || '8728', 10),
+        port: parseInt(process.env.MIKROTIK_PORT || '8729', 10),
         displayPort: parseInt(process.env.MIKROTIK_DISPLAY_PORT || '0', 10) || null,
         user,
         password,
@@ -83,7 +83,8 @@ async function resolveRouterConfig(site, ifaceOverride) {
         const cfg = projectSite.routerConfig;
         return {
             host: cfg.host,
-            port: cfg.port || 8728,
+            // 8729 (api-ssl), bukan 8728: koneksinya selalu TLS.
+            port: cfg.port || 8729,
             displayPort: cfg.displayPort || 8291,
             user: cfg.user || '',
             password: cfg.password || '',
@@ -145,7 +146,7 @@ const FAILURE_THRESHOLD = 5; // Ditingkatkan menjadi 5 (30 detik) agar tidak sen
 // sebagai penanda masih berlangsung — bukan satu baris tiap kegagalan.
 const FAILURE_LOG_EVERY = 50;
 
-// Fungsi Helper untuk menarik data monitor-traffic via RouterOS API Port 8728
+// Fungsi Helper untuk menarik data monitor-traffic via RouterOS API (api-ssl, port 8729)
 // Menerima routerConfig agar bisa connect ke router berbeda per-site
 async function fetchMikrotikTraffic(routerConfig) {
     const iface = routerConfig.interface;
@@ -859,7 +860,8 @@ function startBackgroundTrafficCollector() {
         for (const { siteName, cfg } of configuredSites) {
             const routerConfig = {
                 host: cfg.host,
-                port: cfg.port || 8728,
+                // 8729 (api-ssl), bukan 8728: koneksinya selalu TLS.
+            port: cfg.port || 8729,
                 displayPort: cfg.displayPort,
                 user: cfg.user,
                 password: cfg.password,
