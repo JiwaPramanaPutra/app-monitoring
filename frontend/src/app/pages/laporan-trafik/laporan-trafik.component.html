@@ -2,15 +2,20 @@
   <app-sidebar></app-sidebar>
 
   <div class="main">
-    <div class="page-header">
+    <div class="page-header no-print">
       <div>
         <h2 style="font-size:15px;">Laporan Trafik</h2>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">Laporan historis jaringan · {{ selectedSite }}</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline" (click)="exportData('json')">Ekspor JSON</button>
-        <button class="btn" (click)="exportData('csv')">Ekspor CSV</button>
+        <button class="btn" (click)="printReport()">Unduh Laporan (PDF)</button>
       </div>
+    </div>
+
+    <!-- Header yang hanya tampil saat dicetak / disimpan sebagai PDF -->
+    <div class="print-only print-report-header">
+      <div class="print-report-title">Laporan Trafik — {{ selectedSite }}</div>
+      <div class="print-report-meta">Periode: {{ selectedPeriod | titlecase }} · {{ getPeriodLabel() }} · Dicetak: {{ printTimestamp }}</div>
     </div>
 
     <!-- Empty state: belum ada site -->
@@ -20,7 +25,7 @@
     </div>
 
     <!-- Site dropdown -->
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <div class="no-print" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
       <app-site-dropdown
         [selectedLabel]="selectedSiteLabel"
         (siteSelected)="onSiteDropdownSelected($event)">
@@ -29,7 +34,7 @@
     </div>
 
     <!-- Period filter -->
-    <div class="card" style="margin-bottom:14px;">
+    <div class="card no-print" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
         <!-- Left side: Periode buttons -->
         <div style="display:flex;align-items:center;gap:10px;">
@@ -65,8 +70,8 @@
       </div>
     </div>
 
-    <!-- Uptime summary -->
-    <div class="card" style="padding:0;overflow:hidden;margin-bottom:14px;">
+    <!-- Uptime summary: tetap di layar, tidak ikut laporan PDF (laporan per site) -->
+    <div class="card no-print" style="padding:0;overflow:hidden;margin-bottom:14px;">
       <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);">
         <div style="font-size:12px;font-weight:500;">Ringkasan uptime per site <span style="font-weight:400;color:var(--muted);">· {{ getPeriodLabel() }}</span></div>
       </div>

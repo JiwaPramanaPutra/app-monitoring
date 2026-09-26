@@ -291,6 +291,7 @@ Re-examined at 0604fea (2026-09-26, /audit scope: full; lens: tests): of the rul
 **Why it matters:** `setDefaultDateRange()` (`:407-413`) refreshes `startDate`/`endDate` only on init, period change, or a query-param emission; the chart (`:245-252`) and export (`:292-299`) requests send those stored strings, while `generateUptimeData()` (`:485`) and `filterDowntimeLog()` (`:599`) recompute `periodWindow()` from `new Date()` (`:480-482`) on every call. If the page stays open across WIB midnight and a fetch happens without a period change - for example `onSiteChange` (`:348-354`) sends the chart request before the query-param subscription (`:168-197`) refreshes the dates - the chart and the date inputs keep yesterday while the uptime summary and log window start at the new WIB midnight, so the page contradicts itself; within one WIB day the two agree, so this is a transient consistency edge rather than lost data, the same "two windows" class F-79 closed.
 **Suggested fix:** Recompute `setDefaultDateRange()` (or derive the request dates from `periodWindow()` at request time) immediately before the chart/export fetch so every path reads the window at the same instant. No behavior decision needed.
 **Resolution:**
+Re-examined at target 16943c8 (2026-09-26, independent automatic review, current receipt): the export half of this finding no longer exists - this delta removed `exportData()` and the `/api/router/history/export` call it used. The chart-vs-summary half is unchanged: the history request still sends the stored `startDate`/`endDate` (`laporan-trafik.component.ts:247-254`), while `generateUptimeData()` (`:457`) and `filterDowntimeLog()` (`:572`) call `periodWindow(this.selectedPeriod, new Date(), ...)` (`:452-453`) on every run, and `setDefaultDateRange()` (`:386`) still refreshes the stored dates only on init, period change, or query-param emission. Status stays `open` (P3).
 
 
 ### F-87 [P3] fixed - `migrate_traffic.js` does not actually prevent duplicates, so running it twice doubles the MongoDB history
@@ -382,3 +383,30 @@ Recorded `open` this pass (tests lens). No repair attempted; the skip behavior i
 **Suggested fix:** Parameterize the cap (for example pass `sampleLimit` through `getAggregatedHistory`/`buildMongoBucketPipeline`, defaulting to the current `SAMPLE_LIMIT`) and add a `$documents` case with `limit + 2` synthetic documents that pins the truncated set, the cutoff tie, and the JSON rows below the cutoff. No behavior change required and no production data touched.
 **Resolution:**
 Recorded `open` this pass (tests lens); equality for ranges over the cap remains unproven, as the spec already notes.
+
+
+### F-96 [P2] unverified - The printed "Dicetak" timestamp can be empty or one print stale because it is rendered only after the print snapshot
+
+**File:** frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:294-302; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.html:18
+**Found:** 2026-09-26 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** `printReport()` assigns `this.printTimestamp` and then calls `window.print()` in the same synchronous handler (`laporan-trafik.component.ts:299-300`). Angular writes the `{{ printTimestamp }}` interpolation (`laporan-trafik.component.html:18`) only during the change-detection pass that runs after the event handler returns, so in browsers that block the renderer and snapshot the current DOM while the print dialog is open (Chrome, Edge, Firefox) the printed header shows the value from before the click: empty on the first print ("Dicetak: ") and the previous print's timestamp on every print after that. The two new `printReport` tests assert only the component field (`component.printTimestamp` non-empty) and the temporary title, never the rendered header at print time, so `npm run verify` cannot catch it. The spec's claim that the print header shows the printed timestamp is therefore unproven.
+**Suggested fix:** Flush the view before printing, for example `this.printTimestamp = ...; this.cdr.detectChanges(); window.print();`, or set the field and print in a later task (`setTimeout`/`afterNextRender`). Extend the print test to capture the rendered `.print-report-meta` text inside the mocked `window.print()` so the timing is pinned. No behavior decision needed.
+**Resolution:** Recorded `unverified` this pass. The code path is confirmed by reading, but no desktop browser is connected to this session, so the actual print snapshot could not be exercised; the missing validation is a real Chrome/Edge print run (or a DOM capture inside a mocked `window.print`).
+
+
+### F-97 [P3] open - README still advertises the removed CSV/JSON exports and omits the new Excel/PDF paths
+
+**File:** README.md:12-13
+**Found:** 2026-09-26 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** This delta removes the Laporan Trafik JSON/CSV export and the Laporan CSV export, and ships `.xlsx` plus a print-to-PDF report, but the README feature list still says "Histori trafik ... + export CSV/JSON" (`:12`) and "Laporan gangguan & maintenance + filter + export CSV" (`:13`). The README is the self-host entry point, so it now describes downloads that no longer exist and omits both replacement paths.
+**Suggested fix:** Update the two bullets to name the `.xlsx` export (Laporan) and the print/PDF report (Laporan Trafik). Documentation only; no behavior change.
+**Resolution:** Recorded `open` this pass; the delta did not touch README.md, so the drift came from removing the features without updating the docs.
+
+
+### F-98 [P3] open - The updated smoke script cannot reach its new `/export/xlsx` check because every request is unauthenticated
+
+**File:** backend/test-laporan.js:8-21,43-49; backend/server.js:50; backend/services/auth.js:115-128
+**Found:** 2026-09-26 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** This delta redirects the manual smoke script from the deleted `/export/csv` to `/export/xlsx` and adds a `PK` magic check, but the script sends no `Authorization` header while every `/api` route sits behind `auth.requireAuth` (`backend/server.js:50`, `backend/services/auth.js:115-128`). Its first call (`POST /api/laporan`, `backend/test-laporan.js:8-21`) therefore returns 401 and `data.data._id` throws, so the new check is unreachable and the script dies at step 1. Confirmed against the running dev server: `GET /api/laporan` with no token returned 401. The script predates auth, but the delta modified the file and its stated purpose is to keep the manual smoke path working.
+**Suggested fix:** Log in first (`POST /api/auth/login` with the env credentials) and send `Authorization: Bearer <token>` on the CRUD calls, or document in the file that a token is required and how to supply it. Dev-script only; no product behavior changes.
+**Resolution:** Recorded `open` this pass; confirmed by reading the middleware and by an unauthenticated `GET /api/laporan` returning 401 from the running backend.

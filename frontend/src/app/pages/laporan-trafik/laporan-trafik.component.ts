@@ -6,7 +6,6 @@ import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
-import Swal from 'sweetalert2';
 import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, TooltipAlign } from '../../shared/chart-math';
 import { clipSeconds, currentSlot, formatWibDay, overlapsWindow, periodWindow, PeriodWindow, wibDateString } from '../../shared/period-window';
 
@@ -81,6 +80,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   selectedSite = '';
   selectedSiteLabel = '';
   selectedPeriod = 'harian';
+  /** Stempel waktu yang muncul di header cetak/PDF; diisi saat printReport(). */
+  printTimestamp = '';
 
   // Date range filter
   startDate = '';
@@ -290,27 +291,15 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  async exportData(format: 'json' | 'csv' = 'csv') {
-    const params = new URLSearchParams({
-      site: this.selectedSite,
-      period: this.selectedPeriod,
-      format
-    });
-    if (this.startDate) params.set('startDate', this.startDate);
-    if (this.endDate) params.set('endDate', this.endDate);
-
-    try {
-      await this.api.download(`/api/router/history/export?${params.toString()}`);
-    } catch (err: any) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Gagal',
-        text: err?.message || 'Gagal mengunduh file.',
-        confirmButtonColor: '#3b82f6'
-      });
-    }
+  /** Buka dialog cetak browser; pengguna memilih "Simpan sebagai PDF". */
+  printReport() {
+    const previousTitle = document.title;
+    const datePart = new Date().toISOString().slice(0, 10);
+    document.title = `Laporan-Trafik_${this.selectedSite || 'site'}_${this.selectedPeriod}_${datePart}`;
+    this.printTimestamp = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    window.print();
+    document.title = previousTitle;
   }
-
 
   fetchLiveTraffic() {
     this.api.fetch(`/api/router/traffic?site=${encodeURIComponent(this.selectedSite)}`)

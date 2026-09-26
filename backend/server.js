@@ -23,7 +23,8 @@ const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('.
 const { claimableStatus, advancePingState } = require('./services/device-status');
 const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
-const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
+const { filterLaporan } = require('./services/laporan-utils');
+const { buildLaporanXlsxBuffer } = require('./services/laporan-xlsx');
 const { isFlagOn } = require('./services/traffic-range');
 const { getAggregatedHistory, getRawSamples, hasSamplesInRange } = require('./services/traffic-history');
 
@@ -506,57 +507,6 @@ app.get('/api/router/history', async (req, res) => {
             source,
             totalSamples,
             data
-        });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
-    }
-});
-
-/**
- * Endpoint: Export laporan trafik (JSON atau CSV)
- * Query params:
- *   ?site=<nama-site> (wajib)
- *   ?period=harian|mingguan|bulanan|tahunan|custom
- *   ?startDate=YYYY-MM-DD
- *   ?endDate=YYYY-MM-DD
- *   ?format=json|csv  (default: json)
- */
-app.get('/api/router/history/export', async (req, res) => {
-    const site = req.query.site;
-    const period = req.query.period || 'harian';
-    const startDate = req.query.startDate || null;
-    const endDate = req.query.endDate || null;
-    const format = (req.query.format || 'json').toLowerCase();
-
-    if (!site) {
-        return res.status(400).json({ success: false, error: 'Parameter site wajib diisi.' });
-    }
-
-    try {
-        const { data: aggregated } = await getAggregatedHistory(site, startDate, endDate, period);
-
-        const filename = `laporan-trafik_${site}_${period}_${startDate || 'all'}_${endDate || 'all'}`;
-
-        if (format === 'csv') {
-            const lines = ['Periode,Tx (Mbps),Rx (Mbps),Jumlah Sample'];
-            for (const row of aggregated) {
-                lines.push(`"${row.label}",${row.tx},${row.rx},${row.samples}`);
-            }
-            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-            res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
-            return res.send('\uFEFF' + lines.join('\r\n')); // BOM untuk Excel
-        }
-
-        // Default: JSON
-        res.setHeader('Content-Type', 'application/json');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}.json"`);
-        return res.json({
-            site,
-            period,
-            startDate,
-            endDate,
-            exportedAt: new Date().toISOString(),
-            data: aggregated
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -1153,7 +1103,7 @@ app.delete('/api/devices/:id', async (req, res) => {
 // CRUD ENDPOINTS FOR LAPORAN
 // =========================================================
 
-// Filter laporan dan pembentukan CSV ada di services/laporan-utils.js (mudah dites).
+// Filter laporan ada di services/laporan-utils.js (mudah dites).
 
 async function getAllLaporan() {
     if (mongoose.connection.readyState === 1) {
@@ -1173,20 +1123,20 @@ app.get('/api/laporan', async (req, res) => {
 });
 
 /**
- * Endpoint: Export laporan ke CSV (mengikuti filter GET /api/laporan)
+ * Endpoint: Export laporan ke Excel (.xlsx berformat, mengikuti filter GET /api/laporan)
  * Query params: ?search=...&type=...
  */
-app.get('/api/laporan/export/csv', async (req, res) => {
+app.get('/api/laporan/export/xlsx', async (req, res) => {
     try {
         const laporans = await getAllLaporan();
         const filtered = filterLaporan(laporans, req.query.search, req.query.type);
 
-        const csv = buildLaporanCsv(filtered);
+        const buffer = await buildLaporanXlsxBuffer(filtered);
 
-        const filename = `laporan_${new Date().toISOString().split('T')[0]}.csv`;
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        const filename = `laporan_${new Date().toISOString().split('T')[0]}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        return res.send('\uFEFF' + csv);
+        return res.send(Buffer.from(buffer));
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }

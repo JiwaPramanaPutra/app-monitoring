@@ -283,12 +283,16 @@ export class LaporanComponent implements OnInit {
     }
   }
 
-  async exportCSV() {
+  private exportParams(): string {
     const params = new URLSearchParams();
     if (this.searchText) params.append('search', this.searchText);
     if (this.filterType) params.append('type', this.filterType);
+    return params.toString();
+  }
+
+  private async downloadLaporan(path: string): Promise<void> {
     try {
-      await this.api.download(`/api/laporan/export/csv?${params.toString()}`);
+      await this.api.download(`${path}?${this.exportParams()}`);
     } catch (err: any) {
       Swal.fire({
         icon: 'error',
@@ -297,5 +301,10 @@ export class LaporanComponent implements OnInit {
         confirmButtonColor: '#3b82f6'
       });
     }
+  }
+
+  /** Ekspor Excel berformat (.xlsx) — satu-satunya jalur ekspor. */
+  async exportExcel() {
+    await this.downloadLaporan('/api/laporan/export/xlsx');
   }
 }

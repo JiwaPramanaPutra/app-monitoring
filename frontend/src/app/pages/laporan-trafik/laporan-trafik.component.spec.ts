@@ -1,9 +1,11 @@
+import { vi } from 'vitest';
 import { LaporanTrafikComponent } from './laporan-trafik.component';
 
 /**
  * Komponen dibuat langsung tanpa TestBed: `generateUptimeData` hanya memakai
  * `sites`, `selectedPeriod`, tanggal, dan `ApiService.fetch`, jadi ketiga
- * ketergantungan itu bisa dipalsukan seperlunya.
+ * ketergantungan itu bisa dipalsukan seperlunya. `printReport` hanya memakai
+ * `selectedSite`, `selectedPeriod`, `document`, dan `window.print`.
  */
 function makeComponent(fetch: (url: string) => Promise<any>): LaporanTrafikComponent {
   return new LaporanTrafikComponent(
@@ -70,5 +72,44 @@ describe('LaporanTrafikComponent.generateUptimeData', () => {
 
     expect(calls).toHaveLength(0);
     expect(component.uptimeData).toEqual([]);
+  });
+});
+
+describe('LaporanTrafikComponent.printReport', () => {
+  it('menyetel nama berkas sementara, membuka dialog cetak, lalu memulihkan judul', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.selectedSite = 'Gizi';
+    component.selectedPeriod = 'harian';
+
+    const originalTitle = document.title;
+    let titleDuringPrint = '';
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {
+      titleDuringPrint = document.title;
+    });
+
+    component.printReport();
+
+    expect(printSpy).toHaveBeenCalledTimes(1);
+    expect(titleDuringPrint).toMatch(/^Laporan-Trafik_Gizi_harian_\d{4}-\d{2}-\d{2}$/);
+    expect(document.title).toBe(originalTitle);
+    expect(component.printTimestamp).not.toBe('');
+
+    printSpy.mockRestore();
+  });
+
+  it('memakai "site" sebagai nama berkas bila site belum dipilih', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.selectedSite = '';
+
+    let titleDuringPrint = '';
+    const printSpy = vi.spyOn(window, 'print').mockImplementation(() => {
+      titleDuringPrint = document.title;
+    });
+
+    component.printReport();
+
+    expect(titleDuringPrint).toMatch(/^Laporan-Trafik_site_harian_\d{4}-\d{2}-\d{2}$/);
+
+    printSpy.mockRestore();
   });
 });

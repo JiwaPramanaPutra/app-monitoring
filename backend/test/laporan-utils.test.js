@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { filterLaporan, csvCell, buildLaporanCsv } = require('../services/laporan-utils');
+const { filterLaporan } = require('../services/laporan-utils');
 
 const rows = [
     {
@@ -22,26 +22,4 @@ test('filterLaporan searches masalah and tindakan case-insensitively', () => {
     assert.strictEqual(filterLaporan(rows, 'KABEL', '').length, 1);
     assert.strictEqual(filterLaporan(rows, 'restart', '').length, 1);
     assert.strictEqual(filterLaporan(rows, 'tidak-ada', '').length, 0);
-});
-
-test('csvCell quotes values, escapes embedded quotes, and handles null', () => {
-    assert.strictEqual(csvCell('plain'), '"plain"');
-    assert.strictEqual(csvCell('a,b'), '"a,b"');
-    assert.strictEqual(csvCell('say "hi"'), '"say ""hi"""');
-    assert.strictEqual(csvCell(null), '""');
-});
-
-test('csvCell neutralizes formula-leading values', () => {
-    assert.strictEqual(csvCell('=SUM(A1)'), '"\'=SUM(A1)"');
-    assert.strictEqual(csvCell('+62'), '"\'+62"');
-    assert.strictEqual(csvCell('@cmd'), '"\'@cmd"');
-    assert.strictEqual(csvCell('-minus'), '"\'-minus"');
-});
-
-test('buildLaporanCsv writes the header and one row per laporan', () => {
-    const lines = buildLaporanCsv(rows).split('\r\n');
-    assert.strictEqual(lines.length, 3);
-    assert.strictEqual(lines[0], 'Tanggal,Jenis,Site,Gedung,Lantai,Ruangan,Perangkat,Masalah,Tindakan,Teknisi');
-    assert.ok(lines[1].includes('"kabel putus"'));
-    assert.ok(lines[1].includes('"AP-1"'));
 });

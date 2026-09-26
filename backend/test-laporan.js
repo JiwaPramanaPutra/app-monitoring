@@ -38,11 +38,15 @@ async function runTest() {
     data = await res.json();
     console.log('Update Result:', data.data.masalah);
     
-    // 4. Export CSV
+    // 4. Export XLSX
     console.log('4. Exporting Laporan...');
-    res = await fetch(`${API}/export/csv`);
-    const csv = await res.text();
-    console.log('CSV Lines:', csv.split('\n').length);
+    res = await fetch(`${API}/export/xlsx`);
+    const xlsx = Buffer.from(await res.arrayBuffer());
+    const header = xlsx.subarray(0, 2).toString('utf8');
+    if (header !== 'PK' || xlsx.length === 0) {
+        throw new Error(`Export xlsx tidak valid (header: ${header}, ${xlsx.length} byte)`);
+    }
+    console.log('XLSX Bytes:', xlsx.length, '| Header:', header);
     
     // 5. DELETE
     console.log('5. Deleting Laporan...');

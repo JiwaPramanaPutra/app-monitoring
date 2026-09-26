@@ -8,7 +8,7 @@
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">{{ reports.length }} laporan ditemukan</div>
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline" (click)="exportCSV()">Ekspor</button>
+        <button class="btn" (click)="exportExcel()">Ekspor Excel</button>
         <button class="btn" (click)="openAddModal()" *ngIf="!isClient && sites.length > 0">Tambah laporan</button>
       </div>
     </div>

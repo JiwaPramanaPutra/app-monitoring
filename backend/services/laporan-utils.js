@@ -1,5 +1,9 @@
-// Helper laporan: filter dipakai GET /api/laporan dan export CSV,
-// dan pembentukan CSV yang aman dikonsumsi spreadsheet.
+// Helper laporan: filter dipakai GET /api/laporan dan ekspor .xlsx.
+
+const LAPORAN_HEADERS = [
+    'Tanggal', 'Jenis', 'Site', 'Gedung', 'Lantai',
+    'Ruangan', 'Perangkat', 'Masalah', 'Tindakan', 'Teknisi'
+];
 
 function filterLaporan(laporans, search, type) {
     let result = laporans || [];
@@ -14,26 +18,7 @@ function filterLaporan(laporans, search, type) {
     return result;
 }
 
-function csvCell(value) {
-    let s = value === null || value === undefined ? '' : String(value);
-    // Netralkan formula injection saat CSV dibuka di Excel/Sheets.
-    if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
-    return '"' + s.replace(/"/g, '""') + '"';
-}
-
-function buildLaporanCsv(laporans) {
-    const lines = ['Tanggal,Jenis,Site,Gedung,Lantai,Ruangan,Perangkat,Masalah,Tindakan,Teknisi'];
-    for (const l of laporans || []) {
-        lines.push([
-            l.date, l.type, l.site, l.gedung, l.lantai, l.ruangan,
-            l.perangkatTerkait, l.masalah, l.tindakan, l.technician
-        ].map(csvCell).join(','));
-    }
-    return lines.join('\r\n');
-}
-
 module.exports = {
     filterLaporan,
-    csvCell,
-    buildLaporanCsv
+    LAPORAN_HEADERS
 };
