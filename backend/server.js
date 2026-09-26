@@ -20,6 +20,7 @@ const { parseMonitorRates, mapInterfaces, mergeProbeCredentials } = require('./s
 const { buildOfflineFallback, toChartSamples } = require('./services/traffic-response');
 const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
+const { claimableStatus, advancePingState } = require('./services/device-status');
 const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
@@ -971,30 +972,24 @@ async function startBackgroundDevicePinger() {
             for (const d of devices) {
                 if (!d.ip || d.ip === '—') continue;
 
-                // Inisialisasi state jika belum ada
-                if (!devicePingState[d.ip]) {
-                    devicePingState[d.ip] = { fails: 0, status: 'Online' };
-                }
-                const state = devicePingState[d.ip];
-
+                let alive = false;
                 try {
                     const pingRes = await ping.promise.probe(d.ip, { timeout: 2 });
-                    
-                    if (pingRes.alive) {
-                        state.fails = 0;
-                        if (state.status === 'Offline') {
-                            state.status = 'Online';
-                            sendTelegramAlert(`✅ <b>[ONLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> sudah kembali normal.`);
-                        }
-                    } else {
-                        throw new Error('Ping timeout');
-                    }
+                    alive = !!pingRes.alive;
                 } catch (e) {
-                    state.fails += 1;
-                    if (state.fails >= DEVICE_FAILURE_THRESHOLD && state.status === 'Online') {
-                        state.status = 'Offline';
-                        sendTelegramAlert(`🚨 <b>[OFFLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> tidak dapat dijangkau!\n(Gagal ping ${DEVICE_FAILURE_THRESHOLD} kali berturut-turut).`);
-                    }
+                    alive = false;
+                }
+
+                // State awal "belum terpantau", bukan "Online": menganggapnya
+                // Online tanpa bukti membuat perangkat yang sejak awal tidak
+                // terjangkau ikut dicap Offline dan memicu notifikasi palsu.
+                const next = advancePingState(devicePingState[d.ip], alive, DEVICE_FAILURE_THRESHOLD);
+                devicePingState[d.ip] = { fails: next.fails, status: next.status };
+
+                if (next.notify === 'online') {
+                    sendTelegramAlert(`✅ <b>[ONLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> sudah kembali normal.`);
+                } else if (next.notify === 'offline') {
+                    sendTelegramAlert(`🚨 <b>[OFFLINE]</b>\nPerangkat <b>${d.name || d.ip}</b> di site <b>${d.siteLocation || 'Unknown'}</b> tidak dapat dijangkau!\n(Gagal ping ${DEVICE_FAILURE_THRESHOLD} kali berturut-turut).`);
                 }
             }
         } catch (err) {
@@ -1097,7 +1092,11 @@ app.get('/api/devices/status', async (req, res) => {
         // 4. Gabungkan hasil ping + client count ke tiap device
         const enriched = devices.map(d => {
             const pingInfo = pingMap[d.ip] || { alive: false, timeMs: null };
-            const status = pingInfo.alive ? 'Online' : 'Offline';
+            // Status yang SAMA dengan yang dipakai pinger: `Online` hanya dari
+            // bukti langsung, `Offline` hanya kalau perangkat pernah terlihat
+            // hidup, sisanya "Tidak Terpantau". Sebelumnya endpoint ini
+            // menyimpulkan sendiri dari satu paket yang tidak dijawab.
+            const status = claimableStatus(pingInfo.alive, (devicePingState[d.ip] || {}).status);
             const pingTime = pingInfo.timeMs !== null ? `${pingInfo.timeMs} ms` : null;
 
             // Reset nilai client dan signal ke N/A karena tidak dapat diambil secara real langsung dari AP

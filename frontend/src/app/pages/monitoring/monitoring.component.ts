@@ -8,12 +8,13 @@ import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import { AuthService } from '../../services/auth.service';
 import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
+import { DeviceStatus, deviceStatusColor, deviceStatusIsDown } from '../../shared/device-status';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
   _id?: string;
   id: number | string;
-  status: 'Online' | 'Offline';
+  status: DeviceStatus;
   type: 'Access Point' | 'Switch' | 'Router' | 'Server';
   name: string;
   brand: string;
@@ -101,6 +102,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
 
   /** Dipakai template: kunci identitas baris perangkat (lihat `shared/device-identity`). */
   readonly deviceKey = deviceKey;
+  readonly deviceStatusColor = deviceStatusColor;
+  readonly deviceStatusIsDown = deviceStatusIsDown;
 
   // Dropdown action menu
   activeDropdown: string | null = null;

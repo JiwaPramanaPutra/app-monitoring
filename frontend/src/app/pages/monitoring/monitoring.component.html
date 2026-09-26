@@ -171,9 +171,9 @@
                 Tidak ada perangkat yang sesuai dengan filter.
               </td>
             </tr>
-            <tr *ngFor="let device of pagedDevices" [style.background]="device.status === 'Offline' ? '#FBEEEC' : ''">
+            <tr *ngFor="let device of pagedDevices" [style.background]="deviceStatusIsDown(device.status) ? '#FBEEEC' : ''">
               <td>
-                <span class="dot" [style.background]="device.status === 'Online' ? '#5B7A52' : '#C4442E'"></span>
+                <span class="dot" [style.background]="deviceStatusColor(device.status)"></span>
                 {{ device.status }}
                 <div *ngIf="device.pingTime" style="font-size:10px; color:var(--muted); margin-top:2px;">
                   {{ device.pingTime }}
@@ -192,7 +192,7 @@
               <td class="mono" style="font-size:11px;">{{ device.mac }}</td>
               <td class="mono" style="font-size:11.5px;">{{ device.ip }}</td>
               <td>{{ device.client }}</td>
-              <td [style.color]="device.status === 'Online' ? '#5B7A52' : '#C4442E'" style="font-weight:500;">{{
+              <td [style.color]="deviceStatusColor(device.status)" style="font-weight:500;">{{
                 device.signal }}</td>
               <td>{{ device.gedung }}</td>
               <td>{{ device.lantai }}</td>
@@ -336,8 +336,8 @@
       </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span style="display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;"
-          [style.color]="selectedDevice.status === 'Online' ? '#5B7A52' : '#C4442E'">
-          <span class="dot" [style.background]="selectedDevice.status === 'Online' ? '#5B7A52' : '#C4442E'"></span>
+          [style.color]="deviceStatusColor(selectedDevice.status)">
+          <span class="dot" [style.background]="deviceStatusColor(selectedDevice.status)"></span>
           {{ selectedDevice.status }}
         </span>
         <button type="button" (click)="closeDetailModal()" class="modal-close">✕</button>
@@ -386,7 +386,7 @@
       <div style="background:var(--paper);border:0.5px solid var(--border);border-radius:8px;padding:10px 12px;">
         <div style="font-size:10px;color:var(--muted);margin-bottom:3px;">Kekuatan Sinyal</div>
         <div style="font-size:12.5px;font-weight:500;"
-          [style.color]="selectedDevice.status === 'Online' ? '#5B7A52' : '#C4442E'">
+          [style.color]="deviceStatusColor(selectedDevice.status)">
           {{ selectedDevice.signal }}
         </div>
       </div>
