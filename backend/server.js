@@ -24,7 +24,8 @@ const { claimableStatus, advancePingState } = require('./services/device-status'
 const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
-const { SAMPLE_LIMIT, rangeBounds, toWIB, capSamples, isFlagOn, mergeSamples } = require('./services/traffic-range');
+const { isFlagOn } = require('./services/traffic-range');
+const { getAggregatedHistory, getRawSamples, hasSamplesInRange } = require('./services/traffic-history');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -438,214 +439,16 @@ app.post('/api/router/interfaces', async (req, res) => {
 
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Helper: Aggregasi samples ke format laporan per-periode (WIB = UTC+7)
+// Helper jalur baca riwayat trafik
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Offset WIB dan `toWIB` ada di `services/traffic-range.js` — satu definisi
-// untuk seluruh backend, dan bisa diuji karena modul ini menyalakan HTTP server
-// saat di-require.
-
-function aggregateSamples(samples, period) {
-    if (!samples || samples.length === 0) return [];
-
-    const groups = {};
-
-    for (const s of samples) {
-        const wib = toWIB(s.timestamp);
-        let key, label;
-
-        switch (period) {
-            case 'harian': {
-                // Group per jam: 00, 01, ..., 23
-                const h = wib.getUTCHours();
-                key = `${String(h).padStart(2, '0')}`;
-                label = `${String(h).padStart(2, '0')}:00`;
-                break;
-            }
-            case 'mingguan': {
-                // Group per hari (Mon=1 ... Sun=0 → kita map ke Senin–Minggu)
-                const dayNames = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-                const dayOrder = [1, 2, 3, 4, 5, 6, 0]; // Mon → Sun
-                const dow = wib.getUTCDay(); // 0=Sun
-                key = String(dow);
-                label = dayNames[dow];
-                break;
-            }
-            case 'bulanan': {
-                // Group per minggu ke-1/2/3/4 dalam bulan
-                const day = wib.getUTCDate();
-                const weekNum = Math.min(4, Math.ceil(day / 7));
-                key = `mg${weekNum}`;
-                label = `Minggu ${weekNum}`;
-                break;
-            }
-            case 'tahunan': {
-                // Group per bulan
-                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-                    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                const m = wib.getUTCMonth();
-                key = String(m);
-                label = monthNames[m];
-                break;
-            }
-            default: {
-                // custom / raw → group per hari (YYYY-MM-DD)
-                const d = wib;
-                const y = d.getUTCFullYear();
-                const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
-                const da = String(d.getUTCDate()).padStart(2, '0');
-                key = `${y}-${mo}-${da}`;
-                label = `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
-                break;
-            }
-        }
-
-        if (!groups[key]) {
-            groups[key] = { key, label, txSum: 0, rxSum: 0, count: 0 };
-        }
-        groups[key].txSum += Number(s.txMbps) || 0;
-        groups[key].rxSum += Number(s.rxMbps) || 0;
-        groups[key].count++;
-    }
-
-    // Susun urutan yang benar
-    let sortedKeys;
-    switch (period) {
-        case 'harian':
-            sortedKeys = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
-            break;
-        case 'mingguan':
-            sortedKeys = ['1', '2', '3', '4', '5', '6', '0']; // Mon–Sun
-            break;
-        case 'bulanan':
-            sortedKeys = ['mg1', 'mg2', 'mg3', 'mg4'];
-            break;
-        case 'tahunan':
-            sortedKeys = Array.from({ length: 12 }, (_, i) => String(i));
-            break;
-        default:
-            sortedKeys = Object.keys(groups).sort();
-            break;
-    }
-
-    const result = [];
-    for (const k of sortedKeys) {
-        if (groups[k]) {
-            const g = groups[k];
-            result.push({
-                label: g.label,
-                tx: +(g.txSum / g.count).toFixed(2),
-                rx: +(g.rxSum / g.count).toFixed(2),
-                samples: g.count
-            });
-        } else if (['harian', 'tahunan'].includes(period)) {
-            // Tampilkan slot kosong untuk jam/bulan yang tidak ada data
-            let label;
-            if (period === 'harian') {
-                label = `${k}:00`;
-            } else {
-                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
-                    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-                label = monthNames[parseInt(k)];
-            }
-            result.push({ label, tx: 0, rx: 0, samples: 0 });
-        }
-    }
-
-    return result;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Helper: Ambil raw samples dari MongoDB atau fallback ke JSON
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Batas hari WIB (`rangeBounds`), keputusan batas jumlah sample (`capSamples`),
-// penjaga bendera query (`isFlagOn`), dan dedup dua sumber (`mergeSamples`) ada
-// di `services/traffic-range.js` — modul ini menyalakan HTTP server saat
-// di-require, jadi logika itu harus di luar sini agar bisa diuji.
-
-/** Query Mongo untuk satu site pada satu rentang. */
-function mongoSampleQuery(site, startMs, endMs) {
-    const query = { site };
-    if (startMs || endMs) {
-        query.timestamp = {};
-        if (startMs) query.timestamp.$gte = startMs;
-        if (endMs) query.timestamp.$lte = endMs;
-    }
-    return query;
-}
-
-/**
- * Ada sample tersimpan untuk site ini di rentang itu?
- *
- * Dipakai tabel uptime, yang sebelumnya membaca SELURUH riwayat lalu
- * menggabungkan, membuang duplikat, dan mengurutkannya hanya untuk tahu "ada
- * sample atau tidak". Jawabannya boolean, jadi penggabungan tidak diperlukan —
- * cukup salah satu sumber yang berisi.
- */
-async function hasSamplesInRange(site, startDate, endDate) {
-    const { startMs, endMs } = rangeBounds(startDate, endDate);
-
-    if (mongoose.connection.readyState === 1) {
-        try {
-            const TrafficSample = require('./models/TrafficSample');
-            if (await TrafficSample.countDocuments(mongoSampleQuery(site, startMs, endMs)) > 0) return true;
-        } catch (e) {
-            console.warn('MongoDB count failed, memakai JSON saja:', e.message);
-        }
-    }
-
-    let jsonSamples = storage.getTrafficHistory(site);
-    if (startMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) >= startMs);
-    if (endMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) <= endMs);
-    return jsonSamples.length > 0;
-}
-
-async function getRawSamples(site, startDate, endDate) {
-    const { startMs, endMs } = rangeBounds(startDate, endDate);
-
-    const collected = [];
-    const sources = [];
-
-    if (mongoose.connection.readyState === 1) {
-        try {
-            const TrafficSample = require('./models/TrafficSample');
-
-            const docs = await TrafficSample.find(mongoSampleQuery(site, startMs, endMs))
-                .sort({ timestamp: -1 })
-                .limit(SAMPLE_LIMIT + 1)
-                .lean();
-
-            // Satu baris ekstra diambil supaya peringatan batas hanya muncul saat
-            // benar-benar terpotong — riwayat yang pas SAMPLE_LIMIT bukan pemotongan.
-            const { docs: capped, truncated } = capSamples(docs, SAMPLE_LIMIT);
-            if (truncated) {
-                console.warn(`[History] ${site}: batas ${SAMPLE_LIMIT} sample tercapai, sisanya tidak dimuat.`);
-            }
-
-            // Perulangan biasa, BUKAN `push(...docs)`: penyebaran argumen melempar
-            // RangeError di atas ~131k elemen, dan karena ini berada di dalam
-            // `try`, error itu tertangkap sebagai "MongoDB gagal" sehingga sumber
-            // Mongo hilang diam-diam — persis pemotongan yang ingin dihilangkan.
-            for (let i = capped.length - 1; i >= 0; i--) collected.push(capped[i]);
-            sources.push('mongodb');
-        } catch (e) {
-            console.warn('MongoDB query failed, memakai JSON saja:', e.message);
-        }
-    }
-
-    let jsonSamples = storage.getTrafficHistory(site);
-    if (startMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) >= startMs);
-    if (endMs) jsonSamples = jsonSamples.filter(s => new Date(s.timestamp) <= endMs);
-    for (const s of jsonSamples) collected.push(s);
-    sources.push('json');
-
-    // Kedua sumber menyimpan periode yang berbeda (JSON sejak 14/9, MongoDB
-    // hanya sejak koneksinya hidup). Dulu fungsi ini memilih salah satu, dan
-    // akibatnya grafik riwayat terpotong. Sekarang keduanya digabung, dengan
-    // duplikat `site`+`timestamp` dibuang.
-    return { source: sources.join('+'), samples: mergeSamples(collected, site) };
-}
+// Aritmetika batas WIB (`rangeBounds`), keputusan batas jumlah sample
+// (`capSamples`), penjaga bendera query (`isFlagOn`), dan dedup dua sumber
+// (`mergeSamples`) ada di `services/traffic-range.js`. Agregasi per bucket dan
+// seluruh jalur bacanya — `getRawSamples`, `getAggregatedHistory`, dan
+// `hasSamplesInRange` — pindah ke `services/traffic-history.js` dan
+// `services/traffic-aggregate.js` supaya bisa diuji tanpa menyalakan HTTP
+// server, dan supaya jumlah per bucket dihitung MongoDB, bukan diangkut ke Node.
 
 /**
  * Endpoint: Riwayat & Agregasi traffic router per-site
@@ -678,12 +481,11 @@ app.get('/api/router/history', async (req, res) => {
     }
 
     try {
-        const { source, samples } = await getRawSamples(site, startDate, endDate);
-
         // Mode raw: sample apa adanya, tanpa agregasi — `limit` sample terbaru
         // dalam urutan kronologis. Dipakai widget grafik supaya langsung terisi
         // dari riwayat saat site dipilih.
         if (isFlagOn(req.query.raw)) {
+            const { source, samples } = await getRawSamples(site, startDate, endDate);
             const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 45, 500));
             return res.json({
                 success: true,
@@ -695,15 +497,15 @@ app.get('/api/router/history', async (req, res) => {
             });
         }
 
-        const aggregated = aggregateSamples(samples, period);
+        const { source, data, totalSamples } = await getAggregatedHistory(site, startDate, endDate, period);
 
         res.json({
             success: true,
             site,
             period,
             source,
-            totalSamples: samples.length,
-            data: aggregated
+            totalSamples,
+            data
         });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
@@ -731,8 +533,7 @@ app.get('/api/router/history/export', async (req, res) => {
     }
 
     try {
-        const { samples } = await getRawSamples(site, startDate, endDate);
-        const aggregated = aggregateSamples(samples, period);
+        const { data: aggregated } = await getAggregatedHistory(site, startDate, endDate, period);
 
         const filename = `laporan-trafik_${site}_${period}_${startDate || 'all'}_${endDate || 'all'}`;
 

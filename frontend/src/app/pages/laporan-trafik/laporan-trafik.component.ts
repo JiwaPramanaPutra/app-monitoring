@@ -467,10 +467,11 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   async generateUptimeData() {
     const win = this.periodWindow();
 
-    // Fetch downtime events dari backend untuk semua site
-    const results: UptimeData[] = [];
-
-    for (const site of this.sites) {
+    // Setiap site menembak dua endpoint miliknya sendiri. Semua site dijalankan
+    // bersamaan supaya waktu tunggunya mengikuti site paling lambat, bukan
+    // jumlah site kali dua; sebelumnya lima site berbaris satu per satu.
+    // `Promise.all` mempertahankan urutan hasil sesuai urutan `this.sites`.
+    const results = await Promise.all(this.sites.map(async (site): Promise<UptimeData> => {
       let downtimeTotal = 0;      // hanya interface-down = gangguan sungguhan
       let unreachableTotal = 0;   // gagal koneksi = aplikasi kehilangan visibilitas
       let hasSamples = false;     // bukti periode ini memang terukur
@@ -545,7 +546,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         ? '#9AA0A6'
         : uptimePct >= 99 ? '#5B7A52' : uptimePct >= 97 ? '#D9A441' : '#C4442E';
 
-      results.push({
+      return {
         site,
         uptimePct,
         color,
@@ -553,8 +554,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         unreachableTotal: this.formatDurationText(unreachableTotal),
         lastDown,
         lastRecover
-      });
-    }
+      };
+    }));
 
     this.uptimeData = results;
   }
