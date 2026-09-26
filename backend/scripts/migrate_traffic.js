@@ -16,6 +16,7 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require('mongoose');
 const TrafficSample = require('../models/TrafficSample');
+const { buildUpsertOps } = require('../services/traffic-migrate');
 
 const TRAFFIC_FILE = path.join(__dirname, '../data/traffic_history.json');
 
@@ -47,39 +48,42 @@ async function migrate() {
 
     console.log(`📦 Total samples di JSON: ${samples.length}`);
 
-    // Cek berapa yang sudah ada di MongoDB (hindari duplikat)
+    // Hanya informasi. Penangkal duplikatnya BUKAN angka ini, melainkan bentuk
+    // operasinya yang ber-upsert — lihat `buildUpsertOps`.
     const existingCount = await TrafficSample.countDocuments();
-    console.log(`📊 Existing documents di MongoDB: ${existingCount}`);
+    console.log(`📊 Dokumen yang sudah ada di MongoDB: ${existingCount}`);
 
-    // Batch insert (gunakan ordered:false agar error satu doc tidak stop semuanya)
+    // `bulkWrite` dengan upsert: menjalankan skrip ini dua kali tidak menggandakan
+    // apa pun. `ordered: false` supaya satu baris bermasalah tidak menghentikan
+    // sisanya.
     const BATCH_SIZE = 500;
     let inserted = 0;
+    let matched = 0;
     let skipped = 0;
 
     for (let i = 0; i < samples.length; i += BATCH_SIZE) {
-        const batch = samples.slice(i, i + BATCH_SIZE).map(s => ({
-            site: s.site || 'Unknown',
-            timestamp: new Date(s.timestamp),
-            txMbps: Number(s.txMbps) || 0,
-            rxMbps: Number(s.rxMbps) || 0,
-            interface: s.interface || ''
-        })).filter(s => !isNaN(s.timestamp.getTime())); // filter invalid timestamp
+        const batch = buildUpsertOps(samples.slice(i, i + BATCH_SIZE));
+        if (batch.length === 0) {
+            skipped += Math.min(BATCH_SIZE, samples.length - i);
+            continue;
+        }
 
         try {
-            const result = await TrafficSample.insertMany(batch, { ordered: false });
-            inserted += result.length;
+            const result = await TrafficSample.bulkWrite(batch, { ordered: false });
+            inserted += result.upsertedCount || 0;
+            matched += result.matchedCount || 0;
         } catch (err) {
-            // ordered:false akan lanjut meskipun ada error (misal duplicate key)
-            if (err.insertedDocs) inserted += err.insertedDocs.length;
-            skipped += (batch.length - (err.insertedDocs ? err.insertedDocs.length : 0));
+            console.error(`\n⚠️  Satu batch gagal: ${err.message}`);
+            skipped += batch.length;
         }
 
         process.stdout.write(`\r⏳ Progress: ${Math.min(i + BATCH_SIZE, samples.length)}/${samples.length}`);
     }
 
     console.log(`\n✅ Migrasi selesai!`);
-    console.log(`   → Inserted: ${inserted}`);
-    console.log(`   → Skipped : ${skipped}`);
+    console.log(`   → Baru disisipkan : ${inserted}`);
+    console.log(`   → Sudah ada       : ${matched} (tidak diubah)`);
+    console.log(`   → Dilewati        : ${skipped} (timestamp tidak sah atau batch gagal)`);
 
     const finalCount = await TrafficSample.countDocuments();
     console.log(`   → Total dokumen di MongoDB sekarang: ${finalCount}`);

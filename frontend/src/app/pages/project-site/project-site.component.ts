@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef, NgZone } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SidebarComponent } from '../../components/sidebar/sidebar.component';
@@ -38,7 +38,7 @@ export class ProjectSiteComponent implements OnInit {
   isEditing = false;
   editId = '';
 
-  constructor(private projectService: ProjectService, private cdr: ChangeDetectorRef, private ngZone: NgZone) {}
+  constructor(private projectService: ProjectService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     this.projectService.projects$.subscribe(p => {
@@ -86,6 +86,16 @@ export class ProjectSiteComponent implements OnInit {
     this.showProjectModal = true;
   }
 
+  /**
+   * Simpan project, lalu tutup modal dan segarkan daftar.
+   *
+   * Penyelesaiannya sengaja HANYA milik observable. Sebelumnya setiap operasi
+   * di kelas ini juga memasang `setTimeout(..., 2000)` sebagai cadangan, dan
+   * penjaga `done` membuat timer itu berkuasa: simpan yang lebih lambat dari dua
+   * detik menutup modal dan menyegarkan daftar SEBELUM responsnya tiba, lalu
+   * respons yang menyusul tidak menyegarkan apa pun — daftarnya tetap basi tanpa
+   * tanda apa-apa. Tanpa timer, tidak ada jalur yang mengklaim selesai lebih dulu.
+   */
   saveProject() {
     this.isSaving = true;
     let done = false;
@@ -111,7 +121,7 @@ export class ProjectSiteComponent implements OnInit {
       }
     });
 
-    setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
   }
 
   deleteProject(proj: any) {
@@ -164,7 +174,7 @@ export class ProjectSiteComponent implements OnInit {
       next: () => finish(),
       error: (err) => { this.notifyError(err, 'Gagal menyimpan perubahan.'); finish(); }
     });
-    setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
   }
 
   deleteSite(site: any) {
@@ -185,7 +195,7 @@ export class ProjectSiteComponent implements OnInit {
         next: () => finish(),
         error: (err) => { this.notifyError(err, 'Gagal menghapus.'); finish(); }
       });
-      setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
     });
   }
 
@@ -227,7 +237,7 @@ export class ProjectSiteComponent implements OnInit {
       next: () => finish(),
       error: (err) => { this.notifyError(err, 'Gagal menyimpan perubahan.'); finish(); }
     });
-    setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
   }
 
   deleteGedung(gedung: any) {
@@ -249,7 +259,7 @@ export class ProjectSiteComponent implements OnInit {
         next: () => finish(),
         error: (err) => { this.notifyError(err, 'Gagal menghapus.'); finish(); }
       });
-      setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
     });
   }
 
@@ -286,7 +296,7 @@ export class ProjectSiteComponent implements OnInit {
       next: () => finish(),
       error: (err) => { this.notifyError(err, 'Gagal menyimpan perubahan.'); finish(); }
     });
-    setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
   }
 
   deleteLantai(floor: any) {
@@ -306,7 +316,7 @@ export class ProjectSiteComponent implements OnInit {
         next: () => finish(),
         error: (err) => { this.notifyError(err, 'Gagal menghapus.'); finish(); }
       });
-      setTimeout(() => this.ngZone.run(() => finish()), 2000);
+
     });
   }
 
