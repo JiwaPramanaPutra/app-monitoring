@@ -8,7 +8,7 @@ import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import Swal from 'sweetalert2';
 import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, TooltipAlign } from '../../shared/chart-math';
-import { clipSeconds, currentSlot, overlapsWindow, periodWindow, PeriodWindow } from '../../shared/period-window';
+import { clipSeconds, currentSlot, formatWibDay, overlapsWindow, periodWindow, PeriodWindow, wibDateString } from '../../shared/period-window';
 
 interface TrafficData {
   label: string;
@@ -140,9 +140,10 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    // Set today's date
-    const now = new Date();
-    this.today = this.formatDateForInput(now);
+    // Hari WIB, bukan hari kalender browser. `today` dipakai sebagai batas
+    // `[max]` pada kedua input tanggal, jadi memakai kalender browser membuat
+    // hari WIB yang sedang berjalan tidak bisa dipilih di browser barat UTC.
+    this.today = wibDateString(new Date());
 
     // Set default date range (today)
     this.startDate = this.today;
@@ -388,17 +389,6 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     this.fetchRealHistoryAndEvents();
   }
 
-  applyQuickPreset(days: number) {
-    const end = new Date();
-    const start = new Date(end);
-    start.setDate(start.getDate() - days + 1);
-
-    this.startDate = this.formatDateForInput(start);
-    this.endDate = this.formatDateForInput(end);
-    this.selectedPeriod = 'custom';
-    this.updateQueryParams();
-  }
-
   /**
    * Isi input tanggal dari jendela periode yang sama dengan grafik, ekspor,
    * ringkasan, dan log. Sebelumnya fungsi ini menghitung sendiri, sehingga untuk
@@ -410,13 +400,6 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     const win = this.periodWindow();
     this.startDate = win.startDate;
     this.endDate = win.endDate;
-  }
-
-  formatDateForInput(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
   }
 
   updateQueryParams() {
@@ -757,9 +740,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   getPeriodLabel(): string {
     if (this.selectedPeriod === 'custom' && this.startDate && this.endDate) {
-      const start = new Date(this.startDate);
-      const end = new Date(this.endDate);
-      return `${this.formatDate(start)} - ${this.formatDate(end)}`;
+      // Dibaca sebagai hari WIB, tanpa objek Date — lihat `formatWibDay`.
+      return `${formatWibDay(this.startDate)} - ${formatWibDay(this.endDate)}`;
     }
 
     const labels: { [key: string]: string } = {
@@ -769,10 +751,5 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       'tahunan': 'Tahun ini'
     };
     return labels[this.selectedPeriod] || '';
-  }
-
-  formatDate(date: Date): string {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    return `${date.getDate()} ${months[date.getMonth()]} ${date.getFullYear()}`;
   }
 }

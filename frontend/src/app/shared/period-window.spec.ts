@@ -5,6 +5,7 @@ import {
   WIB_OFFSET_MS,
   clipSeconds,
   currentSlot,
+  formatWibDay,
   overlapsWindow,
   periodWindow,
   wibDateString
@@ -139,6 +140,35 @@ describe('overlapsWindow - satu predikat untuk ringkasan dan log', () => {
     // Lima jam total, tapi hanya 00:00-03:00 tanggal 2 yang ada di jendela.
     expect((selesai - mulai) / 3600000).toBe(5);
     expect(clipSeconds(mulai, selesai, win)).toBe(3 * 3600);
+  });
+});
+
+describe('formatWibDay - label tanggal tanpa menyentuh zona waktu', () => {
+  // `new Date('2026-09-01')` adalah tengah malam UTC; memformatnya dengan getter
+  // lokal membuat labelnya terbaca "31 Agu" di browser barat UTC. Fungsi ini
+  // membaca bagian stringnya langsung, jadi hasilnya sama di mana pun.
+  it('memformat tanggal WIB apa adanya', () => {
+    expect(formatWibDay('2026-09-01')).toBe('1 Sep 2026');
+    expect(formatWibDay('2026-09-10')).toBe('10 Sep 2026');
+    expect(formatWibDay('2026-01-31')).toBe('31 Jan 2026');
+    expect(formatWibDay('2026-08-31')).toBe('31 Agu 2026');
+    expect(formatWibDay('2026-12-31')).toBe('31 Des 2026');
+  });
+
+  it('tanggal 1 tidak pernah jatuh ke bulan sebelumnya', () => {
+    // Inilah bentuk cacatnya: tanggal 1 di setiap bulan harus tetap tanggal 1.
+    for (let m = 1; m <= 12; m++) {
+      const bulan = String(m).padStart(2, '0');
+      expect(formatWibDay(`2026-${bulan}-01`)).toBe(`1 ${MONTH_LABELS[m - 1]} 2026`);
+    }
+  });
+
+  it('masukan kosong atau tidak lengkap dikembalikan apa adanya', () => {
+    expect(formatWibDay('')).toBe('');
+    expect(formatWibDay(null)).toBe('');
+    expect(formatWibDay(undefined)).toBe('');
+    expect(formatWibDay('bukan-tanggal')).toBe('bukan-tanggal');
+    expect(formatWibDay('2026-09')).toBe('2026-09');
   });
 });
 

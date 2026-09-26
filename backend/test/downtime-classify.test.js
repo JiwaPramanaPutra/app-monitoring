@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { decideDowntimeAction, isIdleSample } = require('../services/downtime-classify');
+const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('../services/downtime-classify');
 
 test('isIdleSample shares one definition of "no traffic" (fix F-67)', () => {
     assert.strictEqual(isIdleSample(0, 0), true);
@@ -119,4 +119,56 @@ test('missing or malformed numbers count as idle, not as traffic', () => {
 test('calling with no arguments never throws and closes nothing', () => {
     // `running` yang tidak ditentukan sama artinya dengan "tidak tahu".
     assert.deepStrictEqual(decideDowntimeAction(), { closeOpen: false, open: null });
+});
+
+// ── shouldLogFailure: peringatan collector tidak boleh membanjiri log ────────
+
+test('peringatan ditulis tepat saat melewati ambang, bukan tiap kegagalan', () => {
+    const THRESHOLD = 5;
+    const EVERY = 50;
+
+    const logged = [];
+    for (let fails = 1; fails <= 14; fails++) {
+        if (shouldLogFailure(fails, THRESHOLD, EVERY)) logged.push(fails);
+    }
+
+    // Sebelumnya setiap kegagalan menulis satu baris: 1..14 semuanya.
+    assert.deepStrictEqual(logged, [5]);
+});
+
+test('setelah ambang, peringatan hanya tiap kelipatan', () => {
+    const THRESHOLD = 5;
+    const EVERY = 50;
+
+    assert.equal(shouldLogFailure(49, THRESHOLD, EVERY), false);
+    assert.equal(shouldLogFailure(50, THRESHOLD, EVERY), true);
+    assert.equal(shouldLogFailure(51, THRESHOLD, EVERY), false);
+    assert.equal(shouldLogFailure(99, THRESHOLD, EVERY), false);
+    assert.equal(shouldLogFailure(100, THRESHOLD, EVERY), true);
+});
+
+test('satu site yang putus sehari penuh menghasilkan ratusan baris, bukan belasan ribu', () => {
+    // Collector berjalan tiap 6 detik -> 14.400 kegagalan per hari.
+    const POLLS_PER_DAY = 14400;
+    const THRESHOLD = 5;
+    const EVERY = 50;
+
+    let logged = 0;
+    for (let fails = 1; fails <= POLLS_PER_DAY; fails++) {
+        if (shouldLogFailure(fails, THRESHOLD, EVERY)) logged++;
+    }
+
+    // 1 (saat ambang) + 288 (tiap kelipatan 50 sampai 14.400).
+    assert.equal(logged, 289);
+    assert.ok(logged < POLLS_PER_DAY / 40, `harusnya jauh lebih sedikit, dapat ${logged}`);
+});
+
+test('masukan tidak masuk akal tidak pernah memicu peringatan beruntun', () => {
+    assert.equal(shouldLogFailure(0, 5, 50), false);
+    assert.equal(shouldLogFailure(-1, 5, 50), false);
+    assert.equal(shouldLogFailure(NaN, 5, 50), false);
+    assert.equal(shouldLogFailure(null, 5, 50), false);
+    // Tanpa jarak yang sah, hanya ambangnya sendiri yang dilaporkan.
+    assert.equal(shouldLogFailure(5, 5, 0), true);
+    assert.equal(shouldLogFailure(50, 5, 0), false);
 });

@@ -140,6 +140,25 @@ export const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
   'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
 /**
+ * Format tanggal `YYYY-MM-DD` (hari WIB) menjadi `1 Sep 2026`.
+ *
+ * Sengaja **tidak** membentuk objek `Date` sama sekali. `new Date('2026-09-01')`
+ * ditafsirkan sebagai tengah malam UTC, dan memformatnya dengan getter lokal
+ * membuat labelnya terbaca 31 Agustus di browser barat UTC. Karena masukannya
+ * sudah berupa tanggal kalender WIB, bagian stringnya langsung dipakai — tidak
+ * ada zona waktu yang bisa menggesernya.
+ */
+export function formatWibDay(value: string | null | undefined): string {
+  const parts = String(value || '').split('-').map(Number);
+  const [y, m, d] = parts;
+  if (parts.length !== 3 || !Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) {
+    return String(value || '');
+  }
+  const bulan = MONTH_LABELS[m - 1] || '';
+  return `${d} ${bulan} ${y}`;
+}
+
+/**
  * Indeks titik grafik yang mewakili "sekarang", atau -1 bila periode ini tidak
  * punya slot waktu (mis. `bulanan`/`custom`).
  *

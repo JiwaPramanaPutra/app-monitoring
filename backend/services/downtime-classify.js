@@ -49,4 +49,26 @@ function decideDowntimeAction({ txBps, rxBps, running, ongoingKind } = {}) {
     return { closeOpen: false, open: null };
 }
 
-module.exports = { decideDowntimeAction, isIdleSample };
+/**
+ * Apakah kegagalan polling ke-`fails` perlu ditulis ke log?
+ *
+ * Satu site yang router-nya putus gagal tiap beberapa detik selama berhari-hari.
+ * Satu baris per kegagalan berarti puluhan ribu baris yang isinya sama dan
+ * menenggelamkan pesan lain — terukur dari pemakaian nyata: pencacah mencapai
+ * 176 dalam ~18 menit, dan setiap baris ditulis. Lapor saat **melewati** ambang
+ * (kapan gangguannya mulai), lalu hanya tiap `every` kegagalan sebagai penanda
+ * masih berlangsung.
+ *
+ * @param {number} fails  jumlah kegagalan berturut-turut, termasuk yang ini
+ * @param {number} threshold  ambang yang sama dengan yang memulai pencatatan downtime
+ * @param {number} every  jarak antar peringatan lanjutan
+ */
+function shouldLogFailure(fails, threshold, every) {
+    if (!Number.isFinite(fails) || fails <= 0) return false;
+    if (!Number.isFinite(threshold) || threshold <= 0) return true;
+    if (fails === threshold) return true;
+    if (!Number.isFinite(every) || every <= 0) return false;
+    return fails > threshold && fails % every === 0;
+}
+
+module.exports = { decideDowntimeAction, isIdleSample, shouldLogFailure };

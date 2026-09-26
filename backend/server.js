@@ -20,7 +20,7 @@ const { parseMonitorRates, mapInterfaces, mergeProbeCredentials } = require('./s
 const { buildOfflineFallback, toChartSamples } = require('./services/traffic-response');
 const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
-const { decideDowntimeAction, isIdleSample } = require('./services/downtime-classify');
+const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan, buildLaporanCsv } = require('./services/laporan-utils');
 const { SAMPLE_LIMIT, rangeBounds, toWIB, capSamples, isFlagOn, mergeSamples } = require('./services/traffic-range');
@@ -139,6 +139,10 @@ const cachedTrafficBySite = {};
 // Tracking kegagalan berturut-turut untuk mencegah false-positive downtime
 const siteFailureCounts = {};
 const FAILURE_THRESHOLD = 5; // Ditingkatkan menjadi 5 (30 detik) agar tidak sensitif false-positive downtime
+// Satu site yang router-nya putus gagal tiap 6 detik selama berhari-hari. Lapor
+// saat MELEWATI ambang (kapan gangguannya mulai), lalu hanya tiap kelipatan ini
+// sebagai penanda masih berlangsung — bukan satu baris tiap kegagalan.
+const FAILURE_LOG_EVERY = 50;
 
 // Fungsi Helper untuk menarik data monitor-traffic via RouterOS API Port 8728
 // Menerima routerConfig agar bisa connect ke router berbeda per-site
@@ -913,13 +917,22 @@ function startBackgroundTrafficCollector() {
                 }
 
             } catch (err) {
-                siteFailureCounts[siteName] = (siteFailureCounts[siteName] || 0) + 1;
-                console.warn(`[Collector] ${siteName} poll failed (${siteFailureCounts[siteName]}/${FAILURE_THRESHOLD}): ${err.message}`);
+                const fails = (siteFailureCounts[siteName] || 0) + 1;
+                siteFailureCounts[siteName] = fails;
+
+                // Sengaja TIDAK tiap kegagalan: satu site yang router-nya putus
+                // bisa gagal tiap 6 detik selama berhari-hari, sehingga satu
+                // baris per kegagalan berarti ~14.400 baris sehari yang isinya
+                // sama dan menenggelamkan pesan lain. Keputusannya murni dan
+                // teruji di `services/downtime-classify.js`.
+                if (shouldLogFailure(fails, FAILURE_THRESHOLD, FAILURE_LOG_EVERY)) {
+                    console.warn(`[Collector] ${siteName} poll failed (${fails}): ${err.message}`);
+                }
 
                 // Gagal menyambung = aplikasi kehilangan visibilitas, bukan
                 // situsnya mati. Hanya dicatat setelah beberapa kegagalan
                 // berturut-turut, dan dengan `kind` yang benar.
-                if (siteFailureCounts[siteName] >= FAILURE_THRESHOLD) {
+                if (fails >= FAILURE_THRESHOLD) {
                     storage.recordDowntimeStart(
                         siteName,
                         err.message || 'Koneksi router gagal',
