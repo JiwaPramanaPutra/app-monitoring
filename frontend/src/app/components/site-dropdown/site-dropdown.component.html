@@ -13,7 +13,7 @@
   </button>
 
   <!-- Panel: daftar site datar + pencarian -->
-  <div class="dropdown-panel" *ngIf="isOpen">
+  <div class="dropdown-panel" [class.align-right]="panelAlign === 'right'" *ngIf="isOpen">
     <input
       class="site-search"
       type="text"

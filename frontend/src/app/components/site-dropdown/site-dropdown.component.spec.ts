@@ -1,13 +1,15 @@
 import { BehaviorSubject } from 'rxjs';
-import { SiteDropdownComponent } from './site-dropdown.component';
+import { SiteDropdownComponent, choosePanelAlign } from './site-dropdown.component';
 
 /**
- * Komponen dibuat langsung tanpa TestBed: satu-satunya ketergantungannya
- * `ProjectService.siteTree$` dan `ChangeDetectorRef`.
+ * Komponen dibuat langsung tanpa TestBed: `ProjectService.siteTree$`,
+ * `ChangeDetectorRef`, dan `ElementRef` dipalsukan seperlunya.
  */
 function makeComponent(tree: any[]): SiteDropdownComponent {
   const service = { siteTree$: new BehaviorSubject<any[]>(tree) } as any;
-  const component = new SiteDropdownComponent(service, { markForCheck: () => undefined } as any);
+  const cdr = { markForCheck: () => undefined } as any;
+  const host = { nativeElement: document.createElement('div') } as any;
+  const component = new SiteDropdownComponent(service, cdr, host);
   component.ngOnInit();
   return component;
 }
@@ -81,5 +83,24 @@ describe('SiteDropdownComponent', () => {
     component.toggle();
     expect(component.isOpen).toBe(false);
     expect(component.search).toBe('');
+  });
+});
+
+describe('choosePanelAlign', () => {
+  it('tetap melebar ke kanan saat ruang kanan cukup', () => {
+    expect(choosePanelAlign(1000, 50, 340)).toBe('left');
+    expect(choosePanelAlign(340, 100, 340)).toBe('left');
+  });
+
+  it('membuka ke kiri saat ruang kanan tidak cukup dan kiri lebih lapang', () => {
+    // Kasus modal Tambah Laporan: sisa ruang kanan di dalam modal ±162px,
+    // sedangkan ke kiri masih ±363px.
+    expect(choosePanelAlign(162, 363, 340)).toBe('right');
+    expect(choosePanelAlign(0, 500, 340)).toBe('right');
+  });
+
+  it('tetap ke kanan kalau kiri juga tidak lebih lapang', () => {
+    expect(choosePanelAlign(100, 100, 340)).toBe('left');
+    expect(choosePanelAlign(300, 200, 340)).toBe('left');
   });
 });

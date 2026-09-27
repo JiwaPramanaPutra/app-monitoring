@@ -1,6 +1,7 @@
 import {
   ChangeDetectorRef,
   Component,
+  ElementRef,
   EventEmitter,
   HostListener,
   Input,
@@ -17,6 +18,25 @@ interface FlatSite {
   siteValue: string;
   label: string;
   project: string;
+}
+
+/** Lebar maksimum panel dropdown (px) — dipakai saat memilih sisi buka. */
+export const SITE_PANEL_WIDTH = 340;
+
+/**
+ * Pilih sisi buka panel dropdown.
+ *
+ * Default `left` (panel melebar ke kanan dari trigger). Saat ruang di kanan
+ * tidak cukup — misalnya di dalam modal yang memotong overflow — panel dibuka
+ * `right` (melebar ke kiri) supaya tidak terpotong tanpa menggeser trigger.
+ */
+export function choosePanelAlign(
+  spaceRight: number,
+  spaceLeft: number,
+  panelWidth: number
+): 'left' | 'right' {
+  if (spaceRight >= panelWidth) return 'left';
+  return spaceLeft > spaceRight ? 'right' : 'left';
 }
 
 @Component({
@@ -41,8 +61,14 @@ export class SiteDropdownComponent implements OnInit {
   allSites: FlatSite[] = [];
   search = '';
   isOpen = false;
+  /** Sisi buka panel: `left` melebar ke kanan, `right` melebar ke kiri. */
+  panelAlign: 'left' | 'right' = 'left';
 
-  constructor(private projectService: ProjectService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private projectService: ProjectService,
+    private cdr: ChangeDetectorRef,
+    private host: ElementRef<HTMLElement>
+  ) {}
 
   ngOnInit() {
     this.projectService.siteTree$.subscribe(tree => {
@@ -77,7 +103,11 @@ export class SiteDropdownComponent implements OnInit {
 
   toggle() {
     this.isOpen = !this.isOpen;
-    if (!this.isOpen) this.search = '';
+    if (this.isOpen) {
+      this.panelAlign = this.pickPanelAlign();
+    } else {
+      this.search = '';
+    }
   }
 
   @HostListener('document:click', ['$event'])
@@ -97,5 +127,31 @@ export class SiteDropdownComponent implements OnInit {
     });
     this.isOpen = false;
     this.search = '';
+  }
+
+  /** Sisi buka panel berdasarkan ruang di dalam kotak yang memotongnya. */
+  private pickPanelAlign(): 'left' | 'right' {
+    const el = this.host?.nativeElement;
+    if (!el || typeof el.getBoundingClientRect !== 'function') return 'left';
+    const rect = el.getBoundingClientRect();
+    const clip = this.clippingRect(el);
+    return choosePanelAlign(clip.right - rect.left, rect.right - clip.left, SITE_PANEL_WIDTH);
+  }
+
+  /**
+   * Rect kotak terdekat yang memotong overflow (mis. `.modal-box` yang punya
+   * `overflow-y: auto` sehingga overflow-x ikut terpotong), atau viewport.
+   */
+  private clippingRect(el: HTMLElement): { left: number; right: number } {
+    let node: HTMLElement | null = el.parentElement;
+    while (node) {
+      const style = window.getComputedStyle(node);
+      if (style.overflowX !== 'visible') {
+        const r = node.getBoundingClientRect();
+        return { left: r.left, right: r.right };
+      }
+      node = node.parentElement;
+    }
+    return { left: 0, right: window.innerWidth || 0 };
   }
 }
