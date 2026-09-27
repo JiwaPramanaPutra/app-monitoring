@@ -103,3 +103,28 @@ export function niceChartCeiling(maxValue: number): number {
   }
   return Math.ceil(target / 1000) * 1000;
 }
+
+/**
+ * Tangga batas atas untuk skala AKAR (tinggi bar ∝ √nilai).
+ *
+ * Semua nilai habis dibagi 4 supaya label tengah sumbu (batas ÷ 4) tetap bulat:
+ * 20 → 5, 60 → 15, 600 → 150. Dipakai grafik live agar lonjakan sesaat tidak
+ * menenggelamkan trafik normal.
+ */
+export const SQRT_CEILING_LADDER = [4, 8, 20, 40, 60, 100, 200, 300, 400, 600, 1000, 2000, 3000, 4000];
+
+/**
+ * Batas atas skala akar: nilai terkecil dari tangga yang menutup `data + 10%`.
+ *
+ * Nol/kosong → 4; di atas tangga → dibulatkan ke kelipatan 4000 berikutnya.
+ * Hasil selalu ≥ data (tidak memotong), tetapi jarak visual antara trafik
+ * kecil dan puncak jauh lebih berimbang daripada skala linear.
+ */
+export function niceSqrtCeiling(maxValue: number): number {
+  if (!Number.isFinite(maxValue) || maxValue <= 0) return 4;
+  const target = maxValue * 1.1;
+  for (const ceiling of SQRT_CEILING_LADDER) {
+    if (ceiling >= target) return ceiling;
+  }
+  return Math.ceil(target / 4000) * 4000;
+}

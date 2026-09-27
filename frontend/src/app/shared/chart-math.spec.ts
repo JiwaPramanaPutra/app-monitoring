@@ -5,7 +5,8 @@ import {
   lastIndexWithData,
   leftPercent,
   missingLimit,
-  niceChartCeiling
+  niceChartCeiling,
+  niceSqrtCeiling
 } from './chart-math';
 
 describe('chart-math', () => {
@@ -152,6 +153,25 @@ describe('chart-math', () => {
       expect(niceChartCeiling(0)).toBe(10);
       expect(niceChartCeiling(-5)).toBe(10);
       expect(niceChartCeiling(NaN)).toBe(10);
+    });
+  });
+
+  describe('niceSqrtCeiling (skala akar)', () => {
+    it('memilih batas yang label tengahnya bulat', () => {
+      expect(niceSqrtCeiling(17.5)).toBe(20); // label tengah 5
+      expect(niceSqrtCeiling(50)).toBe(60);   // label tengah 15
+      expect(niceSqrtCeiling(392)).toBe(600); // label tengah 150
+    });
+
+    it('selalu >= data + ruang kepala', () => {
+      for (const v of [0.4, 1, 3.7, 17.5, 50, 392, 1500, 8900]) {
+        expect(niceSqrtCeiling(v)).toBeGreaterThanOrEqual(v * 1.1);
+      }
+    });
+
+    it('kosong/tidak masuk akal jatuh ke 4', () => {
+      expect(niceSqrtCeiling(0)).toBe(4);
+      expect(niceSqrtCeiling(NaN)).toBe(4);
     });
   });
 });

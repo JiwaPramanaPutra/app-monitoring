@@ -10,6 +10,7 @@ import { AuthService } from '../../services/auth.service';
 import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
 import { DeviceStatus, deviceStatusColor, deviceStatusIsDown } from '../../shared/device-status';
 import { managementActions, managementLabel, managementUrlFor } from '../../shared/management-url';
+import { niceSqrtCeiling } from '../../shared/chart-math';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
@@ -97,11 +98,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private trafficTimer: any = null;
   private deviceStatusTimer: any = null;
   readonly DEVICE_REFRESH_INTERVAL = 30000;
-  private readonly MAX_HISTORY = 45;
-  /** Prefill riwayat sedang berjalan — poll live ditahan agar grafik tidak kedip. */
-  private prefillInFlight = false;
-  /** Sample live yang tiba selagi prefill berjalan; digabung setelah prefill selesai. */
-  private pendingLive: { txBps: number; rxBps: number; timestamp: string }[] = [];
+  // 90 sample ≈ 3 menit pada polling 2 dtk — bar besar & jelas, jendela bergeser kiri.
+  private readonly MAX_HISTORY = 90;
 
   // Pagination
   currentPage = 1;
@@ -346,18 +344,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   private updateTrafficMetrics(txBps: number, rxBps: number) {
-    // Riwayat site ini belum siap: tahan sample supaya grafik tidak sempat
-    // menggambar satu batang lalu ditimpa riwayat (kedipan saat pindah site).
-    if (this.prefillInFlight) {
-      this.lastTx = this.formatBps(txBps);
-      this.lastRx = this.formatBps(rxBps);
-      this.pendingLive.push({ txBps, rxBps, timestamp: new Date().toISOString() });
-      if (this.pendingLive.length > this.MAX_HISTORY) {
-        this.pendingLive.shift();
-      }
-      return;
-    }
-
     this.trafficHistory.push({ txBps, rxBps, timestamp: new Date().toISOString() });
     if (this.trafficHistory.length > this.MAX_HISTORY) {
       this.trafficHistory.shift();
@@ -397,38 +383,24 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   }
 
   private calculateScale(rawMaxKbps: number) {
+    // Skala AKAR (bukan linear): lonjakan 50 Mbps tidak lagi membuat bar
+    // 1 Mbps nyaris tak terlihat. Label sumbu mengikuti nilai kuadrat posisi:
+    // batas 20 → label tengah 5 (√(5/20) = 0,5 tinggi).
     if (rawMaxKbps >= 1000) {
       this.chartYUnit = 'Mbps';
-      const maxMbps = rawMaxKbps / 1000;
-      const target = maxMbps * 1.18;
-      const steps = [1, 2, 5, 10, 20, 30, 50, 75, 100, 150, 200, 300, 500, 750, 1000];
-      this.scaleCeil = steps.find(s => s >= target) || Math.ceil(target / 50) * 50;
-    } else if (rawMaxKbps >= 50) {
-      this.chartYUnit = 'Kbps';
-      const target = rawMaxKbps * 1.18;
-      const steps = [60, 80, 100, 150, 200, 300, 400, 500, 600, 800, 1000];
-      this.scaleCeil = steps.find(s => s >= target) || Math.ceil(target / 50) * 50;
-    } else if (rawMaxKbps >= 10) {
-      this.chartYUnit = 'Kbps';
-      const target = rawMaxKbps * 1.2;
-      const steps = [15, 20, 25, 30, 40, 50];
-      this.scaleCeil = steps.find(s => s >= target) || 50;
-    } else if (rawMaxKbps > 0) {
-      this.chartYUnit = 'Kbps';
-      const target = rawMaxKbps * 1.25;
-      const steps = [2, 4, 6, 8, 10];
-      this.scaleCeil = steps.find(s => s >= target) || 10;
+      this.scaleCeil = niceSqrtCeiling(rawMaxKbps / 1000);
     } else {
       this.chartYUnit = 'Kbps';
-      this.scaleCeil = 10;
+      this.scaleCeil = niceSqrtCeiling(rawMaxKbps);
     }
   }
 
   private generateChartBars() {
     const ceilKbps = this.chartYUnit === 'Mbps' ? this.scaleCeil * 1000 : this.scaleCeil;
-    const maxBarHeight = 78;
+    const maxBarHeight = 172; // tinggi plot 200 − ruang kepala 28
+    const baselineY = 200;    // dasar bar mengikuti viewBox SVG (1000×200)
     const rightMargin = 10;
-    const slotWidth = 20; // Ruang antar grup bar (rapat)
+    const slotWidth = 11; // 90 bar × 11 ≈ lebar penuh; bar besar & jelas
 
     const bars: TrafficBar[] = [];
     const count = this.trafficHistory.length;
@@ -441,17 +413,18 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       const txKbps = item.txBps / 1000;
       const rxKbps = item.rxBps / 1000;
 
-      const txRatio = ceilKbps > 0 ? Math.min(1, txKbps / ceilKbps) : 0;
-      const rxRatio = ceilKbps > 0 ? Math.min(1, rxKbps / ceilKbps) : 0;
+      // Tinggi bar ∝ akar nilai: trafik kecil tetap terlihat saat ada puncak.
+      const txRatio = ceilKbps > 0 ? Math.min(1, Math.sqrt(txKbps / ceilKbps)) : 0;
+      const rxRatio = ceilKbps > 0 ? Math.min(1, Math.sqrt(rxKbps / ceilKbps)) : 0;
 
       const txHeight = txKbps > 0 ? Math.max(3, Math.round(txRatio * maxBarHeight)) : 0;
       const rxHeight = rxKbps > 0 ? Math.max(3, Math.round(rxRatio * maxBarHeight)) : 0;
 
       bars.push({
         x,
-        txY: 90 - txHeight,
+        txY: baselineY - txHeight,
         txHeight,
-        rxY: 90 - rxHeight,
+        rxY: baselineY - rxHeight,
         rxHeight
       });
     }
@@ -474,7 +447,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
    * Satuan hanya ditulis sekali di label paling atas agar tidak berulang.
    */
   axisTickLabel(fraction: number): string {
-    const value = this.scaleCeil * fraction;
+    // Skala akar: label = batas × fraksi² (posisi tengah = batas ÷ 4).
+    const value = this.scaleCeil * fraction * fraction;
     const rounded = value >= 100 ? Math.round(value) : Math.round(value * 10) / 10;
     return fraction >= 1 ? `${rounded} ${this.chartYUnit}` : String(rounded);
   }
@@ -557,7 +531,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     }
     this.currentPage = 1;
     this.resetTrafficHistory();
-    this.prefillTrafficHistory();
     this.fetchRouterTraffic();
     this.initDevices(); // Load devices for the new site
     this.cdr.markForCheck();
@@ -571,8 +544,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   private resetTrafficHistory() {
     this.trafficHistory = [];
     this.chartBars = [];
-    this.prefillInFlight = false;
-    this.pendingLive = [];
     this.routerTraffic.txMbps = 0;
     this.routerTraffic.rxMbps = 0;
     this.routerTraffic.txBps = 0;
@@ -581,67 +552,6 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     this.lastRx = '0 Kbps';
     this.peakRate = '0 Kbps';
     this.avgRate = '0 Kbps';
-  }
-
-  /**
-   * Isi grafik dari riwayat tersimpan supaya langsung penuh saat site dipilih,
-   * bukan menunggu ±90 detik (45 sample x polling 2 detik) terkumpul sendiri.
-   * Sumbernya sample pengukuran RouterOS yang sama, hanya yang lebih lama.
-   *
-   * Selama permintaan ini berjalan, sample live dari polling ditahan
-   * (`pendingLive`) supaya grafik tidak sempat menggambar satu batang lalu
-   * ditimpa riwayat — kedipan yang terlihat saat pindah site.
-   */
-  private async prefillTrafficHistory(): Promise<void> {
-    const site = this.selectedSite;
-    if (!site) return;
-    // Site tanpa monitoring router tidak boleh digambar dari riwayat: history
-    // lamanya masih tersimpan sehingga grafik sempat muncul lalu dibersihkan oleh
-    // balasan `siteConfigured: false` — terbaca sebagai kedipan.
-    if (!hasTrafficRouterConfig(this.siteOf(site))) return;
-
-    this.prefillInFlight = true;
-    try {
-      const res = await this.api.fetch(
-        `/api/router/history?site=${encodeURIComponent(site)}&raw=1&limit=${this.MAX_HISTORY}`
-      );
-      if (!res.ok) return;
-      const data = await res.json().catch(() => null);
-
-      // Jangan timpa kalau user sudah pindah site selama request berjalan.
-      if (site !== this.selectedSite) return;
-
-      const points: { txBps: number; rxBps: number }[] = Array.isArray(data?.data) ? data.data : [];
-      // Riwayat + sample live yang tertahan digambar sekali, dengan skala sama.
-      this.trafficHistory = [...points, ...this.pendingLive].slice(-this.MAX_HISTORY);
-      this.pendingLive = [];
-      const newest = this.trafficHistory[this.trafficHistory.length - 1];
-      this.lastTx = this.formatBps(newest?.txBps || 0);
-      this.lastRx = this.formatBps(newest?.rxBps || 0);
-      this.recomputeTrafficMetrics();
-      this.cdr.markForCheck();
-    } catch (e) {
-      // Riwayat tidak tersedia -> sample tertahan digambar oleh finally.
-    } finally {
-      if (site === this.selectedSite) {
-        this.prefillInFlight = false;
-        this.flushPendingLive();
-      }
-    }
-  }
-
-  /** Gambar sample live yang tertahan saat prefill (riwayat kosong/gagal). */
-  private flushPendingLive(): void {
-    if (this.pendingLive.length === 0) return;
-    for (const p of this.pendingLive) {
-      this.trafficHistory.push(p);
-    }
-    while (this.trafficHistory.length > this.MAX_HISTORY) {
-      this.trafficHistory.shift();
-    }
-    this.pendingLive = [];
-    this.recomputeTrafficMetrics();
-    this.cdr.markForCheck();
   }
 
   // ── Hierarki lokasi untuk form perangkat ──────────────────────
