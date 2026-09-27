@@ -285,6 +285,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       samples: Number(d.samples) || 0
     }));
     this.chartLabels = this.chartData.map(d => d.label);
+    this.updateChartScale(false);
     this.calculateStatistics();
     this.generateUptimeData();
     this.generateChartPaths();
@@ -317,6 +318,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
             const lastPoint = this.chartData[this.chartData.length - 1];
             lastPoint.tx = this.liveTxMbps;
             lastPoint.rx = this.liveRxMbps;
+            this.updateChartScale(true);
             this.calculateStatistics();
             this.generateChartPaths();
           }
@@ -627,20 +629,37 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     return String(value >= 100 ? Math.round(value) : Math.round(value * 10) / 10);
   }
 
-  generateChartPaths() {
-    if (this.chartData.length === 0) return;
+  /**
+   * Tentukan batas sumbu Y dari data.
+   *
+   * `riseOnly` dipakai saat poll live: dalam satu pemuatan data skala hanya
+   * boleh NAIK (puncak baru), tidak turun-turun mengikuti titik live — supaya
+   * bentuk grafik stabil dan tidak "bernafas" tiap 2 detik. Ganti site/periode
+   * memuat ulang data dan memakai perhitungan baru (boleh turun).
+   */
+  private updateChartScale(riseOnly: boolean) {
+    if (this.chartData.length === 0) {
+      this.chartMaxValue = 10;
+      return;
+    }
 
-    const width = 100;
-    const height = 130;
-    // Skala mengikuti data (bukan lantai keras 300 Mbps) supaya pemakaian kecil
-    // tetap terlihat; `niceChartCeiling` menambah ruang kepala dan membulatkan
-    // ke langkah grid yang rapi.
     const dataMax = Math.max(
       0,
       ...this.chartData.map(d => d.tx),
       ...this.chartData.map(d => d.rx)
     );
-    const maxValue = niceChartCeiling(dataMax);
+    const next = niceChartCeiling(dataMax);
+    this.chartMaxValue = riseOnly ? Math.max(this.chartMaxValue, next) : next;
+  }
+
+  generateChartPaths() {
+    if (this.chartData.length === 0) return;
+
+    const width = 100;
+    const height = 130;
+    // Skala diputuskan `updateChartScale()` (stabil dalam satu pemuatan data);
+    // di sini hanya menggambar.
+    const maxValue = this.chartMaxValue || 10;
 
     const points = this.chartData.length;
     const stepX = points > 1 ? width / (points - 1) : 0;
@@ -681,9 +700,6 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           .join(' ');
         return `M ${left} ${height} ${line} L ${right} ${height} Z`;
       }).join(' ');
-
-    // Disimpan supaya penanda kursor memakai skala yang sama dengan path.
-    this.chartMaxValue = maxValue;
 
     this.txPath = buildLine(d => d.tx);
     this.txAreaPath = buildArea(d => d.tx);

@@ -142,3 +142,39 @@ describe('LaporanTrafikComponent.filterDowntimeLog', () => {
     expect(component.downtimeLog.map(e => e.kind)).toEqual(['interface-down']);
   });
 });
+
+describe('LaporanTrafikComponent — skala stabil', () => {
+  it('skala awal dihitung dari data', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.chartData = [
+      { label: 'a', tx: 1, rx: 2, samples: 1 },
+      { label: 'b', tx: 25, rx: 3, samples: 1 }
+    ];
+
+    (component as any).updateChartScale(false);
+
+    expect(component.chartMaxValue).toBe(40); // 25 × 1,1 → langkah 10 → 40
+  });
+
+  it('poll live tidak menurunkan skala; puncak baru menaikkannya', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.chartData = [
+      { label: 'a', tx: 1, rx: 2, samples: 1 }
+    ];
+
+    (component as any).updateChartScale(false);
+    expect(component.chartMaxValue).toBe(4);
+
+    // Skala sudah naik karena puncak sebelumnya — titik live kecil tidak menurunkannya.
+    component.chartMaxValue = 20;
+    (component as any).updateChartScale(true);
+    expect(component.chartMaxValue).toBe(20);
+
+    // Puncak baru yang lebih tinggi tetap menaikkan.
+    component.chartData = [
+      { label: 'a', tx: 50, rx: 2, samples: 1 }
+    ];
+    (component as any).updateChartScale(true);
+    expect(component.chartMaxValue).toBe(100);
+  });
+});
