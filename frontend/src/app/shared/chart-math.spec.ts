@@ -4,7 +4,8 @@ import {
   indexFromRatio,
   lastIndexWithData,
   leftPercent,
-  missingLimit
+  missingLimit,
+  niceChartCeiling
 } from './chart-math';
 
 describe('chart-math', () => {
@@ -130,6 +131,27 @@ describe('chart-math', () => {
       const full = Array.from({ length: 24 }, () => ({ samples: 4 }));
       const lastWithData = lastIndexWithData(full);
       expect(countMissing(full, missingLimit(lastWithData, 8))).toBe(0);
+    });
+  });
+
+  describe('niceChartCeiling (skala otomatis)', () => {
+    it('mengikuti data kecil, bukan lantai keras 300', () => {
+      expect(niceChartCeiling(0.41)).toBe(0.8);
+      expect(niceChartCeiling(1.89)).toBe(4);
+      expect(niceChartCeiling(25)).toBe(40);
+    });
+
+    it('tidak pernah memotong data (selalu >= data + ruang kepala)', () => {
+      for (const v of [0.03, 0.41, 1.89, 4.2, 99, 137, 280, 999, 1500]) {
+        const ceiling = niceChartCeiling(v);
+        expect(ceiling).toBeGreaterThanOrEqual(v * 1.1);
+      }
+    });
+
+    it('nilai kosong/tidak masuk akal jatuh ke 10 Mbps', () => {
+      expect(niceChartCeiling(0)).toBe(10);
+      expect(niceChartCeiling(-5)).toBe(10);
+      expect(niceChartCeiling(NaN)).toBe(10);
     });
   });
 });

@@ -6,7 +6,7 @@ import { SidebarComponent } from '../../components/sidebar/sidebar.component';
 import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropdown.component';
 import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
-import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, TooltipAlign } from '../../shared/chart-math';
+import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, niceChartCeiling, TooltipAlign } from '../../shared/chart-math';
 import { clipSeconds, currentSlot, formatWibDay, overlapsWindow, periodWindow, PeriodWindow, wibDateString } from '../../shared/period-window';
 
 interface TrafficData {
@@ -102,7 +102,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   /** Titik grafik yang sedang ditunjuk kursor (tooltip keterangan Mbps). */
   hoveredPoint: HoveredPoint | null = null;
   /** Skala maksimum grafik; dipakai bersama oleh path dan penanda kursor. */
-  chartMaxValue = 300;
+  chartMaxValue = 10;
   chartLabels: string[] = [];
   txCurrent = 0;
   txAverage = 0;
@@ -623,7 +623,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
   /** Label sumbu Y pada `fraction` dari skala. Sumbu mengikuti `chartMaxValue`. */
   axisLabel(fraction: number): string {
-    const value = (this.chartMaxValue || 300) * fraction;
+    const value = (this.chartMaxValue || 10) * fraction;
     return String(value >= 100 ? Math.round(value) : Math.round(value * 10) / 10);
   }
 
@@ -632,11 +632,15 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
     const width = 100;
     const height = 130;
-    const maxValue = Math.max(
-      Math.max(...this.chartData.map(d => d.tx)),
-      Math.max(...this.chartData.map(d => d.rx)),
-      300
+    // Skala mengikuti data (bukan lantai keras 300 Mbps) supaya pemakaian kecil
+    // tetap terlihat; `niceChartCeiling` menambah ruang kepala dan membulatkan
+    // ke langkah grid yang rapi.
+    const dataMax = Math.max(
+      0,
+      ...this.chartData.map(d => d.tx),
+      ...this.chartData.map(d => d.rx)
     );
+    const maxValue = niceChartCeiling(dataMax);
 
     const points = this.chartData.length;
     const stepX = points > 1 ? width / (points - 1) : 0;
@@ -701,7 +705,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
 
     const index = indexFromRatio((event.clientX - rect.left) / rect.width, points);
     const point = this.chartData[index];
-    const max = this.chartMaxValue || 300;
+    const max = this.chartMaxValue || 10;
     const left = leftPercent(index, points);
 
     // Area grafik tingginya 130 dari viewBox 150 -> ubah ke persen kotak.

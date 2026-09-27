@@ -79,3 +79,27 @@ export function countMissing(points: ChartPointLike[] | null | undefined, limitI
 export function missingLimit(lastWithData: number, currentSlot: number): number {
   return Math.max(lastWithData, currentSlot);
 }
+
+/**
+ * Tangga langkah grid sumbu Y (Mbps). Batas atas sumbu selalu `langkah × 4`
+ * supaya lima label grid (0, ¼, ½, ¾, 1) tetap angka yang bulat.
+ */
+export const CHART_STEP_LADDER = [0.05, 0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10, 25, 50, 100, 250, 500, 1000];
+
+/**
+ * Batas atas sumbu Y yang mengikuti data, bukan lantai keras.
+ *
+ * Data kecil (mis. 0–2 Mbps) dulu menempel di dasar grafik karena skala selalu
+ * minimal 300 Mbps. Sekarang: langkah grid terkecil yang menutup `data + 10%`
+ * ruang kepala. Nilai kosong/tidak masuk akal -> 10 Mbps; nilai di atas tangga
+ * dibulatkan ke ribuan berikutnya. Hasilnya SELALU >= data (tidak memotong).
+ */
+export function niceChartCeiling(maxValue: number): number {
+  if (!Number.isFinite(maxValue) || maxValue <= 0) return 10;
+  const target = maxValue * 1.1;
+  for (const step of CHART_STEP_LADDER) {
+    const ceiling = step * 4;
+    if (ceiling >= target) return ceiling;
+  }
+  return Math.ceil(target / 1000) * 1000;
+}
