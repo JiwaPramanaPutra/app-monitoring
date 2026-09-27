@@ -27,18 +27,37 @@ const { filterLaporan } = require('./services/laporan-utils');
 const { buildLaporanXlsxBuffer } = require('./services/laporan-xlsx');
 const { isFlagOn } = require('./services/traffic-range');
 const { getAggregatedHistory, getRawSamples, hasSamplesInRange } = require('./services/traffic-history');
+const { connectWithRetry } = require('./services/mongo-startup');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Koneksi ke MongoDB Atlas
+// Koneksi ke MongoDB. Retry berbatas saat start, dan listener/worker baru
+// dinyalakan setelah statusnya jelas (lihat bootstrap di bawah): restart
+// host/daemon bisa membuat backend siap sebelum mongod menerima koneksi, dan
+// tanpa ini server langsung menyajikan data JSON lama (F-25) padahal MongoDB
+// sehat beberapa detik kemudian.
 const MONGO_URI = process.env.MONGO_URI;
-if (MONGO_URI && !MONGO_URI.includes('YOUR_PASSWORD_HERE')) {
-    mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })
-        .then(() => console.log('✅ MongoDB Connected successfully.'))
-        .catch(err => console.error('❌ MongoDB Connection Error:', err.message));
-} else {
-    console.warn('⚠️ MONGO_URI belum diatur atau password belum diisi di backend/.env. Mode offline storage aktif.');
+const MONGO_CONNECT_TIMEOUT_MS = 45000; // total jendela tunggu saat start
+const MONGO_RETRY_DELAY_MS = 3000;
+
+async function initializeMongo() {
+    if (!MONGO_URI || MONGO_URI.includes('YOUR_PASSWORD_HERE')) {
+        console.warn('⚠️ MONGO_URI belum diatur atau password belum diisi di backend/.env. Mode offline storage aktif.');
+        return;
+    }
+
+    const connected = await connectWithRetry({
+        connect: () => mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 }),
+        timeoutMs: MONGO_CONNECT_TIMEOUT_MS,
+        retryDelayMs: MONGO_RETRY_DELAY_MS,
+        onRetry: (err) => console.warn(`⏳ MongoDB belum siap (${err.message}); mencoba lagi...`),
+        onGiveUp: (err) => console.error(`❌ MongoDB tidak tersambung setelah ${MONGO_CONNECT_TIMEOUT_MS / 1000} dtk: ${err.message}. Mode offline storage aktif.`)
+    });
+
+    if (connected) {
+        console.log('✅ MongoDB Connected successfully.');
+    }
 }
 
 app.use(cors());
@@ -698,9 +717,6 @@ function startBackgroundTrafficCollector() {
     }, INTERVAL_MS);
 }
 
-// Start background worker
-startBackgroundTrafficCollector();
-
 /**
  * Tracking status ping perangkat untuk menghindari spam notifikasi Telegram.
  * Map: deviceKey -> { fails, oks, status, lastNotifyAt }
@@ -785,10 +801,6 @@ async function startBackgroundDevicePinger() {
         }
     }, INTERVAL_MS);
 }
-
-// Jalankan background pinger
-startBackgroundDevicePinger();
-
 
 /**
  * Universal Ping Monitoring (Support semua brand: Ruijie, TP-Link, UniFi, Cisco, Mikrotik, PC, dsb.)
@@ -1217,9 +1229,19 @@ app.delete('/api/laporan/:id', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Nadi Backend running on http://localhost:${PORT}`);
-});
+// Baru setelah status Mongo jelas: worker latar dan listener dinyalakan.
+// Dengan begitu tidak ada jendela "server menjawab tapi Mongo belum siap"
+// yang menyajikan dan menulis ke penyimpanan JSON lama secara diam-diam.
+async function bootstrap() {
+    await initializeMongo();
+    startBackgroundTrafficCollector();
+    startBackgroundDevicePinger();
+    app.listen(PORT, () => {
+        console.log(`Nadi Backend running on http://localhost:${PORT}`);
+    });
+}
+
+bootstrap();
 
 
 

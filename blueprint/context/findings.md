@@ -7,7 +7,7 @@
 > finding is `open` or `fixed`, then archives resolved findings with the work
 > and resets this file.
 
-### F-25 [P2] unverified - Restart-policy starts can still bypass Mongo readiness and silently use JSON storage
+### F-25 [P2] fixed - Restart-policy starts can still bypass Mongo readiness and silently use JSON storage
 
 **File:** docker-compose.yml:4,15,24-28; backend/server.js:27-33,73
 **Found:** 2026-09-24 by /audit independent current (scope: current; lens: quality)
@@ -21,6 +21,7 @@ Re-examined at target fbc777d (2026-09-25): the initial connect is still `mongoo
 Re-examined at target 12c994b (2026-09-25): `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`; `docker-compose.yml` is outside this delta. Still `unverified`; no Docker available.
 Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): unchanged - `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`. Still `unverified`; no Docker available.
 Re-examined at 901504f (2026-09-25, /audit scope: full; lens: quality): `backend/server.js:32` is still `mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 3000 })` with no bounded retry, and storage selection still keys off `readyState === 1`; `docker-compose.yml` is outside this review. Still `unverified`; no Docker available to reproduce the restart race.
+Repaired 2026-09-26 on `fix/retry-mongo-start` (pilihan pemilik: retry berbatas): initial connect retries for up to 45 s (3 s apart) via `services/mongo-startup.js`, and the HTTP listener plus background workers start only after the attempt settles (`bootstrap()`), so a healthy-but-slow MongoDB is no longer bypassed on restart. Unit tests: `backend/test/mongo-startup.test.js`. Awaiting re-review.
 
 
 ### F-26 [P3] open - Backend package metadata still declares the ISC license
