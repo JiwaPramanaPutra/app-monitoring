@@ -34,6 +34,8 @@ export class LaporanComponent implements OnInit {
   allDevices: any[] = [];
   filteredDevices: any[] = [];
   sites: string[] = [];
+  /** Daftar proyek (dengan gedungList/floors) untuk opsi Gedung & Lantai. */
+  projects: any[] = [];
 
   get isClient(): boolean {
     return this.auth.isClient;
@@ -67,6 +69,11 @@ export class LaporanComponent implements OnInit {
       this.cdr.markForCheck();
     });
 
+    this.projectService.projects$.subscribe(projects => {
+      this.projects = projects || [];
+      this.cdr.markForCheck();
+    });
+
     this.loadReports();
     this.loadAllDevices();
   }
@@ -97,11 +104,47 @@ export class LaporanComponent implements OnInit {
   onSiteChange() {
     this.filterDevicesBySite(this.newReport.site);
     this.newReport.perangkatTerkait = '';
+    // Gedung/lantai milik site sebelumnya tidak boleh ikut terbawa.
+    this.newReport.gedung = '';
+    this.newReport.lantai = '';
   }
 
   onLaporanSiteSelected(event: { siteValue: string; buildingValue?: string; label: string }) {
     this.newReport.site = event.siteValue;
     this.onSiteChange();
+  }
+
+  /** Record site dari daftar proyek — sumber opsi Gedung/Lantai. */
+  private siteOf(site: string): any {
+    for (const p of this.projects) {
+      const found = (p.sites || []).find((s: any) => s.name === site);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  gedungOptions(site: string): string[] {
+    return (this.siteOf(site)?.gedungList || []).map((g: any) => g.name);
+  }
+
+  lantaiOptions(site: string, gedung: string): string[] {
+    const g = (this.siteOf(site)?.gedungList || []).find((x: any) => x.name === gedung);
+    return (g?.floors || []).map((f: any) => f.name);
+  }
+
+  /** Nilai lama yang tidak ada di daftar tetap tampil (laporan lama aman diedit). */
+  gedungChoices(site: string, current: string): string[] {
+    const options = this.gedungOptions(site);
+    return current && !options.includes(current) ? [current, ...options] : options;
+  }
+
+  lantaiChoices(site: string, gedung: string, current: string): string[] {
+    const options = this.lantaiOptions(site, gedung);
+    return current && !options.includes(current) ? [current, ...options] : options;
+  }
+
+  onGedungChange() {
+    this.newReport.lantai = '';
   }
 
   async loadReports() {
@@ -152,7 +195,12 @@ export class LaporanComponent implements OnInit {
   openEditModal(report: any) {
     this.isEditing = true;
     this.editingId = report._id;
-    this.newReport = { ...report };
+    // Placeholder '—' dari data lama bukan nama gedung/lantai.
+    this.newReport = {
+      ...report,
+      gedung: report.gedung === '—' ? '' : (report.gedung || ''),
+      lantai: report.lantai === '—' ? '' : (report.lantai || '')
+    };
     this.filterDevicesBySite(report.site);
     this.showModal = true;
   }

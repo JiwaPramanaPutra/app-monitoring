@@ -110,15 +110,21 @@
       </div>
     </div>
 
-    <!-- Row 2: Gedung + Lantai -->
+    <!-- Row 2: Gedung + Lantai (opsi dari hierarki site; Ruangan tetap manual) -->
     <div class="form-row">
       <div class="form-group">
         <label>Gedung</label>
-        <input type="text" name="gedung" [(ngModel)]="newReport.gedung" placeholder="Nama Gedung">
+        <select name="gedung" [(ngModel)]="newReport.gedung" (ngModelChange)="onGedungChange()">
+          <option value="">— Tidak ada —</option>
+          <option *ngFor="let g of gedungChoices(newReport.site, newReport.gedung)" [value]="g">{{ g }}</option>
+        </select>
       </div>
       <div class="form-group">
         <label>Lantai</label>
-        <input type="text" name="lantai" [(ngModel)]="newReport.lantai" placeholder="Lantai ke-">
+        <select name="lantai" [(ngModel)]="newReport.lantai">
+          <option value="">— Tidak ada —</option>
+          <option *ngFor="let f of lantaiChoices(newReport.site, newReport.gedung, newReport.lantai)" [value]="f">{{ f }}</option>
+        </select>
       </div>
     </div>
 
