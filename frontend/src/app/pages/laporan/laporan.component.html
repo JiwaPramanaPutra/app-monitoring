@@ -105,6 +105,7 @@
         <label>Site</label>
         <app-site-dropdown
           [selectedLabel]="newReport.site || 'Pilih Site'"
+          [fullWidth]="true"
           (siteSelected)="onLaporanSiteSelected($event)">
         </app-site-dropdown>
       </div>

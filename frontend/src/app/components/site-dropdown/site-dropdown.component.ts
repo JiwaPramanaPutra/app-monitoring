@@ -50,6 +50,9 @@ export class SiteDropdownComponent implements OnInit {
   /** Label yang muncul di trigger button. Default: nilai yang dipilih saat ini */
   @Input() selectedLabel: string = 'Pilih Site';
 
+  /** Lebar trigger mengikuti kolom form (dipakai di dalam modal), bukan menyusut. */
+  @Input() fullWidth = false;
+
   /** Emit event ketika user memilih sebuah site */
   @Output() siteSelected = new EventEmitter<{
     siteValue: string;

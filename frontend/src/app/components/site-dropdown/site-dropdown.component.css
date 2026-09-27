@@ -35,6 +35,18 @@
   transform: rotate(180deg);
 }
 
+/* Di dalam form: lebar mengikuti kolom (opsi fullWidth), panah tetap di ujung. */
+.site-dropdown-wrapper.full-width {
+  display: block;
+  width: 100%;
+}
+.site-dropdown-wrapper.full-width .site-dropdown-trigger {
+  width: 100%;
+}
+.site-dropdown-wrapper.full-width .chevron {
+  margin-left: auto;
+}
+
 /* ─── Panel ─── */
 .dropdown-panel {
   position: absolute;
