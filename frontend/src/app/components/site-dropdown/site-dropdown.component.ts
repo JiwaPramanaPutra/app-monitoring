@@ -8,13 +8,21 @@ import {
   Output,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { SiteNode } from '../../shared/site-hierarchy';
 import { ProjectService } from '../../services/project.service';
+
+/** Satu baris di daftar datar: site + proyek pemiliknya (untuk konteks). */
+interface FlatSite {
+  siteValue: string;
+  label: string;
+  project: string;
+}
 
 @Component({
   selector: 'app-site-dropdown',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './site-dropdown.component.html',
   styleUrls: ['./site-dropdown.component.css'],
 })
@@ -22,30 +30,54 @@ export class SiteDropdownComponent implements OnInit {
   /** Label yang muncul di trigger button. Default: nilai yang dipilih saat ini */
   @Input() selectedLabel: string = 'Pilih Site';
 
-  /** Emit event ketika user memilih sebuah site leaf-node */
+  /** Emit event ketika user memilih sebuah site */
   @Output() siteSelected = new EventEmitter<{
     siteValue: string;
     buildingValue?: string;
     label: string;
   }>();
 
-  hierarchy: SiteNode[] = [];
+  /** Semua site, datar — level gedung/lantai tidak ikut. */
+  allSites: FlatSite[] = [];
+  search = '';
   isOpen = false;
-  /** Stack index yang sedang hover untuk multi-level submenu */
-  activeParentPath: number[] = [];
 
   constructor(private projectService: ProjectService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit() {
     this.projectService.siteTree$.subscribe(tree => {
-      this.hierarchy = tree || [];
+      this.allSites = this.flattenSites(tree || []);
       this.cdr.markForCheck();
     });
   }
 
+  /**
+   * Ratakan pohon proyek menjadi daftar site. Hanya anak langsung proyek
+   * (level site) yang diambil; node gedung/lantai di bawahnya diabaikan.
+   */
+  private flattenSites(tree: SiteNode[]): FlatSite[] {
+    const result: FlatSite[] = [];
+    for (const project of tree) {
+      for (const node of project.children || []) {
+        if (!node.siteValue) continue;
+        result.push({ siteValue: node.siteValue, label: node.label, project: project.label });
+      }
+    }
+    return result;
+  }
+
+  /** Daftar yang tampil: disaring oleh kotak pencarian (nama site atau proyek). */
+  get filteredSites(): FlatSite[] {
+    const q = this.search.trim().toLowerCase();
+    if (!q) return this.allSites;
+    return this.allSites.filter(site =>
+      site.label.toLowerCase().includes(q) || site.project.toLowerCase().includes(q)
+    );
+  }
+
   toggle() {
     this.isOpen = !this.isOpen;
-    if (!this.isOpen) this.activeParentPath = [];
+    if (!this.isOpen) this.search = '';
   }
 
   @HostListener('document:click', ['$event'])
@@ -53,40 +85,17 @@ export class SiteDropdownComponent implements OnInit {
     const target = event.target as HTMLElement;
     if (!target.closest('.site-dropdown-wrapper')) {
       this.isOpen = false;
-      this.activeParentPath = [];
+      this.search = '';
     }
   }
 
-  /** Dipanggil saat user hover pada item di level tertentu */
-  setActiveAt(level: number, index: number) {
-    this.activeParentPath = [...this.activeParentPath.slice(0, level), index];
-  }
-
-  /** Ambil node anak dari path aktif pada level tertentu */
-  getChildrenAt(level: number): SiteNode[] | null {
-    let nodes: SiteNode[] = this.hierarchy;
-    for (let i = 0; i < level; i++) {
-      const idx = this.activeParentPath[i];
-      if (idx === undefined || !nodes[idx]?.children?.length) return null;
-      nodes = nodes[idx].children!;
-    }
-    return nodes;
-  }
-
-  select(node: SiteNode) {
-    if (node.siteValue) {
-      this.selectedLabel = node.label;
-      this.siteSelected.emit({
-        siteValue: node.siteValue,
-        buildingValue: node.buildingValue,
-        label: node.label,
-      });
-      this.isOpen = false;
-      this.activeParentPath = [];
-    }
-  }
-
-  hasChildren(node: SiteNode): boolean {
-    return !!(node.children && node.children.length > 0);
+  select(site: FlatSite) {
+    this.selectedLabel = site.label;
+    this.siteSelected.emit({
+      siteValue: site.siteValue,
+      label: site.label,
+    });
+    this.isOpen = false;
+    this.search = '';
   }
 }

@@ -12,49 +12,28 @@
     </svg>
   </button>
 
-  <!-- Dropdown Panel: Level 0 -->
-  <div class="dropdown-panel level-0" *ngIf="isOpen">
-    <div
-      *ngFor="let node of hierarchy; let i = index"
-      class="dropdown-item"
-      [class.has-children]="hasChildren(node)"
-      [class.active]="activeParentPath[0] === i"
-      (mouseenter)="setActiveAt(0, i)"
-      (click)="!hasChildren(node) && select(node)">
-      <span>{{ node.label }}</span>
-      <svg *ngIf="hasChildren(node)" width="10" height="10" viewBox="0 0 24 24" fill="none"
-        stroke="currentColor" stroke-width="2.5">
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </div>
+  <!-- Panel: daftar site datar + pencarian -->
+  <div class="dropdown-panel" *ngIf="isOpen">
+    <input
+      class="site-search"
+      type="text"
+      name="siteSearch"
+      [(ngModel)]="search"
+      placeholder="Cari site atau proyek..."
+      autocomplete="off">
 
-    <!-- Level 1 Submenu -->
-    <div class="dropdown-panel level-1" *ngIf="getChildrenAt(1) as children1">
-      <div
-        *ngFor="let node of children1; let j = index"
+    <div class="dropdown-list">
+      <button
+        type="button"
         class="dropdown-item"
-        [class.has-children]="hasChildren(node)"
-        [class.active]="activeParentPath[1] === j"
-        (mouseenter)="setActiveAt(1, j)"
-        (click)="!hasChildren(node) && select(node)">
-        <span>{{ node.label }}</span>
-        <svg *ngIf="hasChildren(node)" width="10" height="10" viewBox="0 0 24 24" fill="none"
-          stroke="currentColor" stroke-width="2.5">
-          <polyline points="9 18 15 12 9 6"/>
-        </svg>
-      </div>
+        *ngFor="let site of filteredSites"
+        (click)="select(site)">
+        <span class="site-name">{{ site.label }}</span>
+        <span class="site-project">{{ site.project }}</span>
+      </button>
 
-      <!-- Level 2 Submenu -->
-      <div class="dropdown-panel level-2" *ngIf="getChildrenAt(2) as children2">
-        <div
-          *ngFor="let node of children2"
-          class="dropdown-item leaf"
-          (click)="select(node)">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3"/>
-          </svg>
-          <span>{{ node.label }}</span>
-        </div>
+      <div class="dropdown-empty" *ngIf="filteredSites.length === 0">
+        Site tidak ditemukan
       </div>
     </div>
   </div>
