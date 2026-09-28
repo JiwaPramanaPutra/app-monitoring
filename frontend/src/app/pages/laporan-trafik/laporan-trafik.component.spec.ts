@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { LaporanTrafikComponent } from './laporan-trafik.component';
+import { periodWindow } from '../../shared/period-window';
 
 /**
  * Komponen dibuat langsung tanpa TestBed: `generateUptimeData` hanya memakai
@@ -41,6 +42,7 @@ describe('LaporanTrafikComponent.generateUptimeData', () => {
     component.selectedPeriod = 'harian';
     component.startDate = '2026-09-01';
     component.endDate = '2026-09-01';
+    component.timeZone = 'Asia/Jakarta';
 
     const pending = component.generateUptimeData();
 
@@ -58,6 +60,9 @@ describe('LaporanTrafikComponent.generateUptimeData', () => {
     expect(calls.length).toBe(6);
     expect(calls.filter(url => url.includes('/api/router/downtime-events'))).toHaveLength(3);
     expect(calls.filter(url => url.includes('/api/router/history') && url.includes('count=1'))).toHaveLength(3);
+    // Hitung "ada sample" juga di zona pengguna: hari yang diperiksa harus sama
+    // dengan hari jendela yang dikirim.
+    expect(calls.filter(url => url.includes('count=1') && url.includes('tz=Asia%2FJakarta'))).toHaveLength(3);
   });
 
   it('tidak menembak apa pun saat daftar site kosong', async () => {
@@ -72,6 +77,77 @@ describe('LaporanTrafikComponent.generateUptimeData', () => {
 
     expect(calls).toHaveLength(0);
     expect(component.uptimeData).toEqual([]);
+  });
+});
+
+describe('LaporanTrafikComponent — zona waktu laporan', () => {
+  it('mengirim tz pengguna pada request riwayat', () => {
+    const calls: string[] = [];
+    const component = makeComponent(url => {
+      calls.push(url);
+      return Promise.resolve({ ok: false } as any);
+    });
+    component.selectedSite = 'Gizi';
+    component.selectedPeriod = 'harian';
+    component.timeZone = 'Asia/Makassar';
+
+    component.fetchRealHistoryAndEvents();
+
+    const historyCall = calls.find(url => url.includes('/api/router/history?'));
+    expect(historyCall).toBeDefined();
+    expect(historyCall).toContain('tz=Asia%2FMakassar');
+  });
+
+  it('memformat waktu log downtime dari ISO menurut tz, bukan string lama', async () => {
+    const event = {
+      site: 'Gizi',
+      kind: 'interface-down',
+      reason: '',
+      start: '2026-09-26 04:00:00',
+      startTimeIso: '2026-09-25T21:00:00.000Z',
+      end: '2026-09-26 04:30:00',
+      endTimeIso: '2026-09-25T21:30:00.000Z',
+      duration: '30m',
+      color: '#C4442E',
+      reported: false
+    };
+    const fetch = (url: string) => Promise.resolve({
+      ok: true,
+      json: async () => url.includes('downtime-events')
+        ? { success: true, events: [event] }
+        : { success: true, data: [] }
+    } as any);
+
+    const component = makeComponent(fetch);
+    component.selectedSite = 'Gizi';
+    component.selectedPeriod = 'harian';
+    component.timeZone = 'Asia/Makassar';
+
+    component.fetchRealHistoryAndEvents();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // 21:00Z = 05:00 WITA keesokan harinya; string lama (04:00) tidak dipakai.
+    expect(component.allDowntimeEvents[0].start).toBe('2026-09-26 05:00');
+    expect(component.allDowntimeEvents[0].end).toBe('2026-09-26 05:30');
+  });
+
+  it('memakai string lama sebagai cadangan bila ISO tidak ada', async () => {
+    const fetch = (url: string) => Promise.resolve({
+      ok: true,
+      json: async () => url.includes('downtime-events')
+        ? { success: true, events: [{ site: 'Gizi', kind: 'interface-down', start: '2026-09-26 04:00:00', duration: '1m' }] }
+        : { success: true, data: [] }
+    } as any);
+
+    const component = makeComponent(fetch);
+    component.selectedSite = 'Gizi';
+    component.timeZone = 'Asia/Makassar';
+
+    component.fetchRealHistoryAndEvents();
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(component.allDowntimeEvents[0].start).toBe('2026-09-26 04:00:00');
+    expect(component.allDowntimeEvents[0].end).toBe('—');
   });
 });
 
@@ -176,5 +252,54 @@ describe('LaporanTrafikComponent — skala stabil', () => {
     ];
     (component as any).updateChartScale(true);
     expect(component.chartMaxValue).toBe(100);
+  });
+});
+
+describe('LaporanTrafikComponent.generateUptimeData — waktu event (F-99)', () => {
+  it('memakai instan ISO, bukan string waktu-dinding server', async () => {
+    // Event di awal hari zona terpilih supaya tidak bergantung jam berapa tes
+    // dijalankan; jendela `harian` berakhir tepat di "sekarang".
+    const win = periodWindow('harian', new Date(), '', '', 'Asia/Makassar');
+    const startMs = win.start.getTime() + 60 * 1000; // 00:01 lokal
+    const endMs = startMs + 5 * 60 * 1000;           // 00:06 lokal
+    const startIso = new Date(startMs).toISOString();
+    const endIso = new Date(endMs).toISOString();
+
+    const fetch = (url: string): Promise<any> => {
+      if (url.includes('/api/router/downtime-events')) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            events: [{
+              site: 'Gizi',
+              kind: 'interface-down',
+              // String lama (waktu dinding server) sengaja berbeda jauh: bila
+              // dipakai, event ini tidak akan tumpang tindih dengan jendela.
+              start: '2001-01-01 00:00:00',
+              end: '2001-01-01 00:05:00',
+              startTimeIso: startIso,
+              endTimeIso: endIso,
+              reported: false
+            }]
+          })
+        } as any);
+      }
+      if (url.includes('/api/router/history')) {
+        return Promise.resolve({ ok: true, json: async () => ({ hasSamples: true }) } as any);
+      }
+      return Promise.resolve({ ok: false, json: async () => ({}) } as any);
+    };
+
+    const component = makeComponent(fetch);
+    component.sites = ['Gizi'];
+    component.selectedPeriod = 'harian';
+    component.timeZone = 'Asia/Makassar';
+
+    await component.generateUptimeData();
+
+    const expectedSeconds = Math.max(0, (Math.min(endMs, win.end.getTime()) - startMs) / 1000);
+    expect(component.uptimeData.length).toBe(1);
+    // Durasi dihitung dari instan ISO; string lama (2001) akan menghasilkan '0s'.
+    expect(component.uptimeData[0].downtimeTotal).toBe((component as any).formatDurationText(expectedSeconds));
   });
 });

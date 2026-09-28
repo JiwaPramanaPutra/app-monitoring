@@ -1,4 +1,4 @@
-// Agregasi riwayat trafik per bucket waktu WIB.
+// Agregasi riwayat trafik per bucket waktu zona pengguna.
 //
 // Dua jalur hidup berdampingan di sini:
 // - `buildMongoBucketPipeline` — agregasi di MongoDB (`$group`), dipakai jalur
@@ -6,10 +6,12 @@
 // - `aggregateSamplesInNode` — algoritma lama apa adanya, tetap dipakai saat
 //   MongoDB tidak tersedia dan sebagai pembanding di test kesetaraan.
 //
-// Zona waktunya SATU: `WIB_OFFSET_MS` dari `traffic-range.js`, bukan salinan
-// offset baru. Pipeline Mongo pun menurunkan geserannya dari konstanta itu.
+// Zona waktunya SATU per request: `tz` yang sudah divalidasi `resolveTimeZone`.
+// Jalur Mongo membentuk kunci bucket dari `$dateToParts { timezone }` dan jalur
+// Node dari `toTZ` — keduanya offset per tanggal, bukan geseran tetap — supaya
+// bucket kedua jalur identik untuk tz mana pun (parity test adalah kontraknya).
 
-const { SAMPLE_LIMIT, WIB_OFFSET_MS, toWIB } = require('./traffic-range');
+const { SAMPLE_LIMIT, DEFAULT_TIME_ZONE, resolveTimeZone, toTZ } = require('./traffic-range');
 
 const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
@@ -30,30 +32,30 @@ function mongoSampleQuery(site, startMs, endMs) {
 }
 
 /**
- * Kunci dan label bucket dari instan yang SUDAH digeser ke kalender WIB
- * (`toWIB`). Key-lah yang menentukan pengelompokan; label diturunkan dari key
- * supaya jalur Mongo dan jalur Node tidak bisa memakai label berbeda.
+ * Kunci dan label bucket dari instan yang SUDAH digeser ke kalender zona
+ * pengguna (`toTZ`). Key-lah yang menentukan pengelompokan; label diturunkan
+ * dari key supaya jalur Mongo dan jalur Node tidak bisa memakai label berbeda.
  */
-function bucketOf(wib, period) {
+function bucketOf(shifted, period) {
     switch (period) {
         case 'harian': {
-            const hour = wib.getUTCHours();
+            const hour = shifted.getUTCHours();
             return { key: String(hour).padStart(2, '0') };
         }
         case 'mingguan': {
-            return { key: String(wib.getUTCDay()) };
+            return { key: String(shifted.getUTCDay()) };
         }
         case 'bulanan': {
-            const weekNum = Math.min(4, Math.ceil(wib.getUTCDate() / 7));
+            const weekNum = Math.min(4, Math.ceil(shifted.getUTCDate() / 7));
             return { key: `mg${weekNum}` };
         }
         case 'tahunan': {
-            return { key: String(wib.getUTCMonth()) };
+            return { key: String(shifted.getUTCMonth()) };
         }
         default: {
-            const y = wib.getUTCFullYear();
-            const mo = String(wib.getUTCMonth() + 1).padStart(2, '0');
-            const da = String(wib.getUTCDate()).padStart(2, '0');
+            const y = shifted.getUTCFullYear();
+            const mo = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+            const da = String(shifted.getUTCDate()).padStart(2, '0');
             return { key: `${y}-${mo}-${da}` };
         }
     }
@@ -79,11 +81,11 @@ function labelOf(key, period) {
 }
 
 /** Kelompokkan baris sample menjadi `Map(key → {txSum, rxSum, count})`. */
-function groupSamplesInNode(samples, period) {
+function groupSamplesInNode(samples, period, tz = DEFAULT_TIME_ZONE) {
     const groups = new Map();
 
     for (const s of samples) {
-        const { key } = bucketOf(toWIB(s.timestamp), period);
+        const { key } = bucketOf(toTZ(s.timestamp, tz), period);
         let group = groups.get(key);
         if (!group) {
             group = { txSum: 0, rxSum: 0, count: 0 };
@@ -147,11 +149,11 @@ function finalizeBuckets(groups, period) {
  * (`mergeSamples`) dijumlahkan per bucket di Node.
  *
  * Dipertahankan sebagai fallback tanpa MongoDB dan sebagai acuan pembanding
- * kesetaraan. Perilakunya tidak boleh diubah.
+ * kesetaraan. Perilakunya tidak boleh diubah — `tz` hanya memilih zona bucket.
  */
-function aggregateSamplesInNode(samples, period) {
+function aggregateSamplesInNode(samples, period, tz = DEFAULT_TIME_ZONE) {
     if (!samples || samples.length === 0) return [];
-    return finalizeBuckets(groupSamplesInNode(samples, period), period);
+    return finalizeBuckets(groupSamplesInNode(samples, period, tz), period);
 }
 
 /**
@@ -162,7 +164,7 @@ function aggregateSamplesInNode(samples, period) {
  * (`mongoTimestamps`, satuan milidetik), dan duplikat di dalam JSON sendiri
  * hanya dihitung sekali.
  */
-function groupJsonSamples(jsonSamples, period, mongoTimestamps, groups = new Map()) {
+function groupJsonSamples(jsonSamples, period, mongoTimestamps, groups = new Map(), tz = DEFAULT_TIME_ZONE) {
     const seen = new Set();
 
     for (const s of (Array.isArray(jsonSamples) ? jsonSamples : [])) {
@@ -174,7 +176,7 @@ function groupJsonSamples(jsonSamples, period, mongoTimestamps, groups = new Map
         if (seen.has(ms)) continue;
         seen.add(ms);
 
-        const { key } = bucketOf(toWIB(stamp), period);
+        const { key } = bucketOf(toTZ(stamp, tz), period);
         let group = groups.get(key);
         if (!group) {
             group = { txSum: 0, rxSum: 0, count: 0 };
@@ -199,49 +201,86 @@ function toNumericExpression(field) {
     };
 }
 
+/** Ekspresi `$dateToParts` di zona `tz`; pangkal semua kunci bucket Mongo. */
+function tzPartsExpression(tz, iso8601 = false) {
+    return { $dateToParts: { date: '$timestamp', timezone: resolveTimeZone(tz), iso8601 } };
+}
+
+/** Angka 0–99 menjadi dua digit, dari bagian `$dateToParts` — tanpa `Date`. */
+function pad2Expression(numberExpression) {
+    return {
+        $concat: [
+            { $cond: [{ $lt: [numberExpression, 10] }, '0', ''] },
+            { $toString: numberExpression }
+        ]
+    };
+}
+
 /**
- * Kunci bucket sebagai ekspresi Mongo.
- *
- * Geseran WIB memakai `WIB_OFFSET_MS` yang sama dengan `toWIB`, jadi kunci
- * pipeline tidak bisa berbeda zona dari label frontend atau `rangeBounds`.
+ * Kunci bucket sebagai ekspresi Mongo, dihitung dari `$dateToParts { timezone }`
+ * — bukan `$dateAdd` offset tetap. Offset per tanggal inilah yang membuat zona
+ * ber-DST (dan WITA/Jayapura) identik dengan jalur Node yang memakai `toTZ`.
  */
-function wibBucketKeyExpression(period) {
-    const wib = { $dateAdd: { startDate: '$timestamp', unit: 'millisecond', amount: WIB_OFFSET_MS } };
+function tzBucketKeyExpression(period, tz = DEFAULT_TIME_ZONE) {
+    // Hari dalam pekan diambil dari bagian ISO: `$dateToParts` non-ISO tidak
+    // mengembalikan `dayOfWeek`, sedangkan `isoDayOfWeek` 1=Senin..7=Minggu.
+    // `mod 7` memetakannya ke 0=Minggu..6=Sabtu, sama dengan `getUTCDay`.
+    if (period === 'mingguan') {
+        const isoParts = tzPartsExpression(tz, true);
+        return {
+            $let: {
+                vars: { isoParts },
+                in: { $toString: { $mod: ['$$isoParts.isoDayOfWeek', 7] } }
+            }
+        };
+    }
+
+    const parts = tzPartsExpression(tz);
+    let key;
 
     switch (period) {
         case 'harian':
-            return { $dateToString: { format: '%H', date: wib, timezone: 'UTC' } };
-        case 'mingguan':
-            // `$dayOfWeek` 1=Minggu..7=Sabtu → 0..6 seperti `getUTCDay`.
-            return { $toString: { $subtract: [{ $dayOfWeek: wib }, 1] } };
+            key = pad2Expression('$$parts.hour');
+            break;
         case 'bulanan':
             // ceil(day/7) = floor((day+6)/7), dibatasi 4 seperti agregasi lama.
-            return {
+            key = {
                 $concat: ['mg', {
                     $toString: {
                         $min: [4, {
                             $floor: {
-                                $divide: [{ $add: [{ $dayOfMonth: wib }, 6] }, 7]
+                                $divide: [{ $add: ['$$parts.day', 6] }, 7]
                             }
                         }]
                     }
                 }]
             };
+            break;
         case 'tahunan':
-            return { $toString: { $subtract: [{ $month: wib }, 1] } };
+            key = { $toString: { $subtract: ['$$parts.month', 1] } };
+            break;
         default:
-            return { $dateToString: { format: '%Y-%m-%d', date: wib, timezone: 'UTC' } };
+            key = {
+                $concat: [
+                    { $toString: '$$parts.year' }, '-',
+                    pad2Expression('$$parts.month'), '-',
+                    pad2Expression('$$parts.day')
+                ]
+            };
+            break;
     }
+
+    return { $let: { vars: { parts }, in: key } };
 }
 
 /**
  * Pipeline agregasi riwayat: batas jumlah, dedup `site`+`timestamp`, lalu
- * `$group` per bucket WIB.
+ * `$group` per bucket zona `tz`.
  *
  * Urutan stage mengikuti cara lama: dokumen terbaru dibatasi `SAMPLE_LIMIT`
  * lebih dulu, baris tanpa timestamp sah dibuang setelahnya, baru dijumlahkan.
  */
-function buildMongoBucketPipeline({ site, startMs, endMs, period }) {
+function buildMongoBucketPipeline({ site, startMs, endMs, period, tz = DEFAULT_TIME_ZONE }) {
     return [
         { $match: mongoSampleQuery(site, startMs, endMs) },
         { $sort: { timestamp: -1 } },
@@ -259,7 +298,7 @@ function buildMongoBucketPipeline({ site, startMs, endMs, period }) {
         },
         {
             $group: {
-                _id: wibBucketKeyExpression(period),
+                _id: tzBucketKeyExpression(period, tz),
                 tx: { $sum: toNumericExpression('$txMbps') },
                 rx: { $sum: toNumericExpression('$rxMbps') },
                 count: { $sum: 1 }
@@ -289,5 +328,5 @@ module.exports = {
     labelOf,
     mongoRowsToGroups,
     mongoSampleQuery,
-    wibBucketKeyExpression
+    tzBucketKeyExpression
 };

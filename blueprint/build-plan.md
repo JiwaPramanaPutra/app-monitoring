@@ -13,6 +13,7 @@
 - [x] 9. **Sanitasi Data & Site Dinamis** - Hapus kredensial/IP/MAC/nama institusi dari kode dan seed; daftar site jadi data dari koleksi Project; API base URL configurable
 - [x] 10. **Rampungkan Fitur Setengah Jadi** - Export CSV laporan, keputusan reboot & notifikasi Telegram (#8), perilaku saat database offline
 - [x] 12. **Packaging Self-Host** - README setup, .env.example, LICENSE, Docker Compose, dan demo seed
+- [x] 13. **Zona Waktu Laporan per Pengguna** - Laporan trafik & log downtime mengikuti zona waktu pengguna (IANA dari browser, fallback WIB); bucket Mongo & Node, label, jendela waktu, dan ekspor konsisten dengan zona itu
 
 ## Backlog (post-v1)
 

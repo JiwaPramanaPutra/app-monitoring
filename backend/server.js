@@ -25,7 +25,7 @@ const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./serv
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan } = require('./services/laporan-utils');
 const { buildLaporanXlsxBuffer } = require('./services/laporan-xlsx');
-const { isFlagOn } = require('./services/traffic-range');
+const { isFlagOn, resolveTimeZone } = require('./services/traffic-range');
 const { getAggregatedHistory, getRawSamples, hasSamplesInRange } = require('./services/traffic-history');
 const { connectWithRetry } = require('./services/mongo-startup');
 
@@ -462,7 +462,7 @@ app.post('/api/router/interfaces', async (req, res) => {
 // Helper jalur baca riwayat trafik
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Aritmetika batas WIB (`rangeBounds`), keputusan batas jumlah sample
+// Aritmetika batas zona (`rangeBounds`), keputusan batas jumlah sample
 // (`capSamples`), penjaga bendera query (`isFlagOn`), dan dedup dua sumber
 // (`mergeSamples`) ada di `services/traffic-range.js`. Agregasi per bucket dan
 // seluruh jalur bacanya — `getRawSamples`, `getAggregatedHistory`, dan
@@ -477,12 +477,19 @@ app.post('/api/router/interfaces', async (req, res) => {
  *   ?period=harian|mingguan|bulanan|tahunan|custom
  *   ?startDate=YYYY-MM-DD
  *   ?endDate=YYYY-MM-DD
+ *   ?tz=<IANA> (opsional; absen/tidak valid -> Asia/Jakarta)
+ *
+ * `tz` hanya memilih zona perhitungan & label; data tersimpan tetap UTC/ISO.
+ * Nilai yang benar-benar dipakai dikembalikan sebagai `timeZone`.
  */
 app.get('/api/router/history', async (req, res) => {
     const site = req.query.site;
     const period = req.query.period || 'harian';
     const startDate = req.query.startDate || null;
     const endDate = req.query.endDate || null;
+    // Fallback senyap ke WIB: tz datang dari browser, dan nilai tak dikenal
+    // hanya akan menyetel zona default — bukan alasan menggagalkan laporan.
+    const tz = resolveTimeZone(req.query.tz);
 
     if (!site) {
         return res.status(400).json({ success: false, error: 'Parameter site wajib diisi.' });
@@ -493,8 +500,8 @@ app.get('/api/router/history', async (req, res) => {
     // riwayat per site hanya untuk satu angka.
     if (isFlagOn(req.query.count)) {
         try {
-            const hasSamples = await hasSamplesInRange(site, startDate, endDate);
-            return res.json({ success: true, site, count: true, hasSamples });
+            const hasSamples = await hasSamplesInRange(site, startDate, endDate, tz);
+            return res.json({ success: true, site, timeZone: tz, count: true, hasSamples });
         } catch (err) {
             return res.status(500).json({ success: false, error: err.message });
         }
@@ -505,11 +512,12 @@ app.get('/api/router/history', async (req, res) => {
         // dalam urutan kronologis. Dipakai widget grafik supaya langsung terisi
         // dari riwayat saat site dipilih.
         if (isFlagOn(req.query.raw)) {
-            const { source, samples } = await getRawSamples(site, startDate, endDate);
+            const { source, samples } = await getRawSamples(site, startDate, endDate, tz);
             const limit = Math.max(1, Math.min(parseInt(req.query.limit, 10) || 45, 500));
             return res.json({
                 success: true,
                 site,
+                timeZone: tz,
                 raw: true,
                 source,
                 totalSamples: samples.length,
@@ -517,11 +525,12 @@ app.get('/api/router/history', async (req, res) => {
             });
         }
 
-        const { source, data, totalSamples } = await getAggregatedHistory(site, startDate, endDate, period);
+        const { source, data, totalSamples } = await getAggregatedHistory(site, startDate, endDate, period, tz);
 
         res.json({
             success: true,
             site,
+            timeZone: tz,
             period,
             source,
             totalSamples,

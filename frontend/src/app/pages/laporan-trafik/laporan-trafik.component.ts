@@ -7,7 +7,7 @@ import { SiteDropdownComponent } from '../../components/site-dropdown/site-dropd
 import { ProjectService } from '../../services/project.service';
 import { ApiService } from '../../services/api.service';
 import { alignFor, countMissing, indexFromRatio, lastIndexWithData, leftPercent, missingLimit, niceChartCeiling, TooltipAlign } from '../../shared/chart-math';
-import { clipSeconds, currentSlot, formatWibDay, overlapsWindow, periodWindow, PeriodWindow, wibDateString } from '../../shared/period-window';
+import { browserTimeZone, clipSeconds, currentSlot, formatTzDateTime, formatWibDay, overlapsWindow, periodWindow, PeriodWindow, tzDateString } from '../../shared/period-window';
 
 interface TrafficData {
   label: string;
@@ -82,6 +82,12 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   selectedPeriod = 'harian';
   /** Stempel waktu yang muncul di header cetak/PDF; diisi saat printReport(). */
   printTimestamp = '';
+  /**
+   * Zona waktu laporan: IANA dari browser, dipakai untuk jendela, `today`,
+   * label, request `tz` ke backend, dan format log downtime. Backend memvalidasi
+   * ulang dan jatuh ke WIB bila nilainya tak dikenal.
+   */
+  timeZone = browserTimeZone();
 
   // Date range filter
   startDate = '';
@@ -141,10 +147,10 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit() {
-    // Hari WIB, bukan hari kalender browser. `today` dipakai sebagai batas
-    // `[max]` pada kedua input tanggal, jadi memakai kalender browser membuat
-    // hari WIB yang sedang berjalan tidak bisa dipilih di browser barat UTC.
-    this.today = wibDateString(new Date());
+    // Hari di zona pengguna, bukan hari kalender mesin: `today` dipakai sebagai
+    // batas `[max]` pada kedua input tanggal, jadi zona yang salah membuat hari
+    // yang sedang berjalan tidak bisa dipilih (atau tanggal besok ikut aktif).
+    this.today = tzDateString(new Date(), this.timeZone);
 
     // Set default date range (today)
     this.startDate = this.today;
@@ -223,13 +229,15 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
             // koneksi, jadi diperlakukan sebagai `unreachable`.
             kind: e.kind === 'interface-down' ? 'interface-down' : 'unreachable',
             reason: e.reason || '',
-            start: e.start,
+            // Tampilan memakai field ISO (zona pengguna); string lama tetap ada
+            // sebagai cadangan untuk event yang belum punya ISO.
+            start: this.eventTimeText(e.startTimeIso, e.start),
             // ISO waktu pulih dipakai predikat tumpang tindih di log, sama
             // seperti ringkasan uptime — bukan sekadar waktu mulai.
             endTime: e.endTimeIso || undefined,
             duration: e.duration,
             color: e.color || '#C4442E',
-            end: e.end || '—',
+            end: this.eventTimeText(e.endTimeIso, e.end),
             reported: !!e.reported,
             timestamp: new Date(e.startTimeIso || e.start)
           }));
@@ -243,10 +251,13 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
         this.filterDowntimeLog();
       });
 
-    // 2. Fetch traffic history (pre-aggregated per period) dari backend
+    // 2. Fetch traffic history (pre-aggregated per period) dari backend.
+    // `tz` dikirim supaya batas tanggal dan bucket dihitung di zona pengguna;
+    // hari di `startDate`/`endDate` sudah hari zona yang sama.
     const params = new URLSearchParams({
       site: this.selectedSite,
-      period: this.selectedPeriod
+      period: this.selectedPeriod,
+      tz: this.timeZone
     });
     if (this.startDate) params.set('startDate', this.startDate);
     if (this.endDate) params.set('endDate', this.endDate);
@@ -275,6 +286,16 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       });
   }
 
+  /**
+   * Teks waktu event untuk tampilan: ISO diformat ke zona pengguna; string lama
+   * (mis. `2026-09-26 04:00:00`) dipakai apa adanya bila ISO belum ada.
+   */
+  private eventTimeText(iso: unknown, fallback: unknown): string {
+    const text = formatTzDateTime(typeof iso === 'string' ? iso : null, this.timeZone);
+    if (text) return text;
+    return typeof fallback === 'string' && fallback ? fallback : '—';
+  }
+
   processRealHistory(aggregated: any[]) {
     // Data sudah diaggregasi oleh backend — langsung pakai
     this.chartData = aggregated.map((d: any) => ({
@@ -297,7 +318,13 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
     const previousTitle = document.title;
     const datePart = new Date().toISOString().slice(0, 10);
     document.title = `Laporan-Trafik_${this.selectedSite || 'site'}_${this.selectedPeriod}_${datePart}`;
-    this.printTimestamp = new Date().toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' });
+    // Stempel cetak mengikuti zona laporan, bukan apa pun yang kebetulan
+    // disetel mesin: PDF adalah laporan, labelnya harus sama dengan isinya.
+    this.printTimestamp = new Intl.DateTimeFormat('id-ID', {
+      dateStyle: 'long',
+      timeStyle: 'short',
+      timeZone: this.timeZone
+    }).format(new Date());
     window.print();
     document.title = previousTitle;
   }
@@ -447,12 +474,12 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
   /**
    * Satu jendela periode untuk seluruh halaman.
    *
-   * Aritmetikanya ada di `shared/period-window.ts` — termasuk definisi WIB
-   * (UTC+7, bukan WITA/UTC+8) — supaya bisa diuji dan supaya ringkasan, log,
-   * probe, input tanggal, grafik, serta ekspor tidak bisa memakai batas berbeda.
+   * Aritmetikanya ada di `shared/period-window.ts` — termasuk offset per tanggal
+   * zona pengguna — supaya bisa diuji dan supaya ringkasan, log, probe, input
+   * tanggal, grafik, serta ekspor tidak bisa memakai batas berbeda.
    */
   private periodWindow(): PeriodWindow {
-    return periodWindow(this.selectedPeriod, new Date(), this.startDate, this.endDate);
+    return periodWindow(this.selectedPeriod, new Date(), this.startDate, this.endDate, this.timeZone);
   }
 
   async generateUptimeData() {
@@ -480,15 +507,25 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           // dengan log downtime, jadi ringkasan dan log tidak bisa berbeda
           // pendapat tentang event yang melewati batas jendela.
           const nowMs = win.end.getTime();
+          // Waktu event dibaca dari instan ISO, sama seperti log downtime.
+          // String lama (`start`/`end`) adalah waktu dinding server tanpa zona,
+          // jadi menafsirkannya dengan zona browser membuat ringkasan dan log
+          // berbeda pendapat saat zona keduanya tidak sama (F-99).
           const relevantEvents = events.filter((e: any) => {
-            const eventStart = new Date(e.start).getTime();
-            const eventEnd = e.end ? new Date(e.end).getTime() : nowMs;
+            const eventStart = new Date(e.startTimeIso || e.start).getTime();
+            const eventEnd = (e.endTimeIso || e.end)
+              ? new Date(e.endTimeIso || e.end).getTime()
+              : nowMs;
             return overlapsWindow(eventStart, eventEnd, win);
           });
 
           for (const ev of relevantEvents) {
             if (!ev.end) continue;
-            const seconds = clipSeconds(new Date(ev.start).getTime(), new Date(ev.end).getTime(), win);
+            const seconds = clipSeconds(
+              new Date(ev.startTimeIso || ev.start).getTime(),
+              new Date(ev.endTimeIso || ev.end).getTime(),
+              win
+            );
             if (seconds <= 0) continue;
             // Kejadian tanpa `kind` adalah data lama (sebelum klasifikasi) dan
             // isinya kegagalan koneksi, jadi diperlakukan sebagai `unreachable`.
@@ -499,8 +536,8 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
           // Get last down and recover times
           if (relevantEvents.length > 0) {
             const latest = relevantEvents[0]; // events are sorted newest first
-            lastDown = latest.start ? new Date(latest.start).toLocaleString('sv-SE').replace('T', ' ').substring(0, 16) : '—';
-            lastRecover = latest.end ? new Date(latest.end).toLocaleString('sv-SE').replace('T', ' ').substring(0, 16) : '—';
+            lastDown = this.eventTimeText(latest.startTimeIso, latest.start);
+            lastRecover = this.eventTimeText(latest.endTimeIso, latest.end);
           }
         }
       } catch (e) {
@@ -512,7 +549,7 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
       // hitung; sebelumnya seluruh riwayat dimuat, digabung, dibuang
       // duplikatnya, lalu diurutkan hanya untuk satu angka.
       try {
-        const params = new URLSearchParams({ site, count: '1' });
+        const params = new URLSearchParams({ site, count: '1', tz: this.timeZone });
         params.set('startDate', win.startDate);
         params.set('endDate', win.endDate);
         const res = await this.api.fetch(`/api/router/history?${params.toString()}`);
@@ -616,11 +653,11 @@ export class LaporanTrafikComponent implements OnInit, OnDestroy {
    * menjadi batas hitung, sehingga jam/bulan yang belum lewat tetap dikecualikan
    * tanpa mengorbankan celah setelah sample terakhir.
    *
-   * Zonanya ada di `shared/period-window.ts` (WIB, bukan WITA) — label yang
-   * dicocokkan diterbitkan backend dengan offset yang sama.
+   * Zonanya ada di `shared/period-window.ts` dan harus sama dengan `tz` yang
+   * dikirim ke backend — label yang dicocokkan diterbitkan dengan zona itu.
    */
   private currentSlotIndex(): number {
-    return currentSlot(this.selectedPeriod, this.chartLabels, new Date());
+    return currentSlot(this.selectedPeriod, this.chartLabels, new Date(), this.timeZone);
   }
 
   /** Label sumbu Y pada `fraction` dari skala. Sumbu mengikuti `chartMaxValue`. */

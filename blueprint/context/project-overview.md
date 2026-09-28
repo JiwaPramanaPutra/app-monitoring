@@ -1,6 +1,6 @@
 # NEXUS (Nadi) - Project Overview
 
-<!-- blueprint:source-hash dac2eb4b89ae9fb9486baa80df1228df0ca3f996352432251d0c1721a78b8906 -->
+<!-- blueprint:source-hash 4088fcdd2702eb1d86aef0ff666b4887ae97431e2a68ce2209f1f200610b4ac0 -->
 
 > Sistem monitoring jaringan & infrastruktur terpusat multi-site, open source & self-hosted: trafik router real-time, status perangkat, dan laporan pemeliharaan.
 
@@ -36,6 +36,7 @@ Akses dibatasi per role (EOS vs Client) dan dapat dibatasi per site.
 9. **Sanitasi Data & Site Dinamis** - Hapus data institusi dari kode dan seed; daftar site jadi data dari koleksi Project; API base URL configurable.
 10. **Rampungkan Fitur Setengah Jadi** - Export CSV laporan, keputusan reboot & Telegram, perilaku saat database offline.
 12. **Packaging Self-Host** - README, `.env.example`, LICENSE, Docker Compose, dan demo seed.
+13. **Zona Waktu Laporan per Pengguna** - Laporan trafik & log downtime mengikuti zona waktu pengguna (IANA dari browser, fallback WIB); bucket Mongo & Node, label, jendela waktu, dan ekspor konsisten dengan zona itu.
 
 Backlog (bukan MVP): remote reboot perangkat (SSH/HTTP); AI troubleshooting - AI membaca struktur dan konfigurasi jaringan untuk membantu network engineer mendiagnosis masalah.
 
@@ -111,4 +112,4 @@ Model open source & self-hosted: tiap organisasi deploy instance sendiri.
 
 ## Open questions
 
-> - Fitur build-plan #8 (Notifikasi Telegram/WhatsApp) belum ada padanannya di project-plan §3.
+> - Fitur build-plan #8 (Notifikasi Telegram/WhatsApp) dan #13 (Zona Waktu Laporan per Pengguna) belum ada padanannya di project-plan §3 (daftar fitur MVP).

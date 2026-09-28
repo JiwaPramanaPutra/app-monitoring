@@ -134,8 +134,23 @@ describe('MonitoringComponent.calculateScale (skala akar)', () => {
   });
 });
 
-describe('MonitoringComponent.generateChartBars', () => {
-  it('menaruh bar di dasar plot 200 dengan jarak 11 dan tinggi akar', () => {
+describe('MonitoringComponent.chartTimeRange — label per zona', () => {
+  it('memakai zona pengguna, bukan getter lokal mesin', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    (component as any).trafficHistory = [
+      { txBps: 0, rxBps: 0, timestamp: '2026-09-25T03:30:00.000Z' },
+      { txBps: 0, rxBps: 0, timestamp: '2026-09-25T03:31:00.000Z' }
+    ];
+
+    component.timeZone = 'Asia/Jakarta';
+    expect(component.chartTimeRange).toBe('10:30:00 – 10:31:00');
+
+    component.timeZone = 'Asia/Makassar';
+    expect(component.chartTimeRange).toBe('11:30:00 – 11:31:00');
+  });
+});
+
+describe('MonitoringComponent.generateChartBars', () => {  it('menaruh bar di dasar plot 200 dengan jarak 11 dan tinggi akar', () => {
     const component = makeComponent(() => Promise.resolve({ ok: false } as any));
     component.chartYUnit = 'Mbps';
     component.scaleCeil = 20; // plafon 20.000 Kbps

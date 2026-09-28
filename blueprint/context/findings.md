@@ -265,6 +265,8 @@ Re-examined at 0604fea (2026-09-26, /audit scope: full; lens: tests): of the rul
 **Why it matters:** `formatDateTimeIndo` builds the stored `start`/`end` strings with local getters (`getFullYear`, `getMonth`, `getDate`, `getHours`), so they carry the SERVER's wall clock, while the ISO fields next to them (`startTimeIso`, `endTimeIso`) are correct instants. The Laporan Trafik downtime log renders those `start`/`end` strings directly, so on any host that is not WIB - a Render/UTC deployment is the planned target - every logged time is shifted by the offset, while the durations beside them and the uptime arithmetic are unaffected. The summary compounds it in the other direction: `lastDown`/`lastRecover` (`laporan-trafik.component.ts:582-583`) are formatted with `toLocaleString('sv-SE')` on the BROWSER, so a non-WIB browser sees the summary and the log below it disagree about the same event, and neither matches the `+07:00` day boundaries the rest of the page is built on (`rangeBounds`, `toWIB`).
 **Suggested fix:** Format the displayed times from the ISO instants with an explicit `Asia/Jakarta` timezone (or a fixed `+07:00` offset) on both sides: either store `start`/`end` already in WIB in `storage.js`, or leave them out of the display path and render `startTimeIso`/`endTimeIso` with an explicit zone in the component, including `lastDown`/`lastRecover`. One zone for every displayed time, matching the `+07:00` day boundaries the rest of the page already uses.
 **Resolution:**
+Re-examined at target 7a7cc4e (2026-09-28, independent automatic review): this delta repairs the display half - the log (`laporan-trafik.component.ts:234,240` via `eventTimeText` `:293-297`) and `lastDown`/`lastRecover` (`:529-530`) now format `startTimeIso`/`endTimeIso` in the user's tz - but `formatDateTimeIndo` still writes server-local strings (`backend/storage.js:179-182`) and the uptime summary still parses them with browser-local semantics; that remaining arithmetic half is recorded as F-99. Status stays `open` (P3).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the arithmetic half is now repaired (F-99 closed) and the display half stays repaired, but `formatDateTimeIndo` still writes server wall-clock strings (`backend/storage.js:179-182`) and `eventTimeText` still falls back to them when ISO is absent, so the stored-string half remains. Status stays `open` (P3).
 
 
 ### F-82 [P3] open - The ping paths recognize only `—` as "no IP" instead of the tested placeholder list
@@ -331,6 +333,7 @@ Re-examined at target 16943c8 (2026-09-26, independent automatic review, current
 **Resolution:**
 Recorded `open` this pass; reproduced read-only against the live MongoDB with `$documents`. No app path stores NaN today, so the impact is latent until a foreign document is imported.
 Re-verified at target ba634ef (2026-09-26, independent automatic review, current receipt): independently reproduced read-only against the live MongoDB - `$eq: ['$x','$x']` returns true for a Double NaN, and a single bucket holding a NaN tx, a valid sample, and (via F-91) a string-timestamp sample yields old-path tx 2.33 but new-path tx 0; the NaN half alone accounts for the whole-bucket zeroing through `$sum` + `row.tx || 0`. A fresh live scan found 0 NaN `txMbps`/`rxMbps` among 54,003 documents and `mongoose` rejects a NaN `txMbps` in memory (Number cast error), so the defect stays latent for app-written data. Status stays `open` (P2).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review) by reading, no new live probe: the timezone work did not touch the numeric coercion - the self-equality NaN test is still `{ $eq: [field, field] }` (`backend/services/traffic-aggregate.js:193-202`) and no `$documents` NaN case was added to the integration suite. Status stays `open` (P2).
 
 
 ### F-91 [P3] open - Mongo documents with parseable string or number timestamps are dropped by the pipeline but counted by the old path
@@ -342,6 +345,7 @@ Re-verified at target ba634ef (2026-09-26, independent automatic review, current
 **Resolution:**
 Recorded `open` this pass; reproduced read-only against the live MongoDB with `$documents`.
 Re-verified at target ba634ef (2026-09-26, independent automatic review, current receipt): independently reproduced read-only - the same probe's document with a parseable string timestamp is counted by `mergeSamples` + `aggregateSamplesInNode` (3 samples, tx 2.33) and dropped by the pipeline's `$type: 'date'` filter (2 samples, tx 0). A fresh live scan found 0 non-Date `timestamp` values among 54,003 documents, so only foreign-imported data is affected; the cap interaction shares this root cause. Status stays `open` (P3).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the pipeline still filters `{ timestamp: { $type: 'date' } }` after `$sort`/`$limit` (`backend/services/traffic-aggregate.js:285-289`) while the old path still accepts parseable string/number timestamps through `mergeSamples` (`backend/services/traffic-range.js:172-185`); unchanged by the timezone work. Status stays `open` (P3).
 
 
 ### F-92 [P3] unverified - A concurrent write that lands between the distinct and aggregate reads can be counted twice
@@ -353,6 +357,7 @@ Re-verified at target ba634ef (2026-09-26, independent automatic review, current
 **Resolution:**
 Recorded `unverified` this pass (code-order analysis; no write experiment run and no reproduction available).
 Re-examined at target ba634ef (2026-09-26, independent automatic review, current receipt): the JSON snapshot is still taken first (`traffic-history.js:166-168`) and `countDocuments`, the aggregate, and `mongoTimestampsForJson` still run concurrently (`:180-186`), so the double-count window is unchanged; no overlapping-write experiment was run. Still `unverified` (P3).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the JSON snapshot is still taken before the concurrent Mongo reads (`backend/services/traffic-history.js:167-187`), so the one-sample double-count window is unchanged; no overlapping-write experiment was run. Still `unverified` (P3).
 
 
 ### F-93 [P3] open - The Mongo-failure fallback and JSON-only branches of `getAggregatedHistory` have no automated test
@@ -364,6 +369,8 @@ Re-examined at target ba634ef (2026-09-26, independent automatic review, current
 **Resolution:**
 Recorded `open` this pass.
 Re-examined at target ba634ef (2026-09-26, independent automatic review, current receipt): this pass's `npm run verify` exercised only the happy path against a reachable MongoDB (185 backend tests, 0 skipped), so the `catch` fallback (`:197-208`) and the JSON-only `else` (`:209-211`) are still unreached. Status stays `open` (P3); see F-94 for the skip-conditional half of the proof.
+Re-examined at target 7a7cc4e (2026-09-28, independent automatic review): the delta passes the resolved zone into the fallback (`traffic-history.js:203-207`) and the JSON-only branch (`:210-212`), and this pass's preload run exercised the Mongo happy path against the live database (244 pass, 0 skip); neither failure branch is forced by any test, so the coverage gap is unchanged. Status stays `open` (P3).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): this pass's DNS-preload run again exercised only the Mongo happy path (244 pass, 0 skip); the aggregate-failure `catch` (`backend/services/traffic-history.js:198-209`) and the JSON-only `else` (`:210-212`) are still unforced by any test. Status stays `open` (P3).
 
 
 ### F-94 [P3] open - The only test that compares the real Mongo pipeline with the old algorithm self-skips, so a green `npm run verify` does not pin the equality claim
@@ -374,6 +381,8 @@ Re-examined at target ba634ef (2026-09-26, independent automatic review, current
 **Suggested fix:** Keep the skip for genuinely offline machines, but make its absence visible where it matters: record in the spec or Verify evidence that a skipped integration subtest is an unproven claim rather than a pass, and keep a committed pipeline-expression case (`$documents`) that runs on any reachable MongoDB 5.1+. No behavior decision needed.
 **Resolution:**
 Recorded `open` this pass (tests lens). No repair attempted; the skip behavior is deliberate for offline machines, so this is an evidence-pinning gap, not a product defect.
+Re-examined at target 7a7cc4e (2026-09-28, independent automatic review): with a local DNS preload the suite ran against the live MongoDB - 244 pass, 0 skip - including the synthetic `$documents` cases, the deterministic fuzz, and the real-data comparison (40,107 samples at Poltekkes Gizi for Asia/Jakarta, Asia/Makassar, Asia/Jayapura, and UTC across all five periods, `deepStrictEqual`), so the equality proof is reproducible when Mongo is reachable. The default `npm run verify` still self-skips it on the local DNS failure and no committed command forces it. Status stays `open` (P3).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the default `npm run verify` skipped the whole suite as one skip (`querySrv ECONNREFUSED`), while the read-only preload run reproduced the full proof - 244/244 pass, 0 skip, all three subtests ran: synthetic `$documents` (4 zones x 5 periods), deterministic fuzz (240 samples), and real data (Poltekkes Gizi, 40,107 samples, 4 zones x 5 periods). The equality claim remains reproducible only when MongoDB is reachable and no committed command forces it. Status stays `open` (P3).
 
 
 ### F-95 [P3] open - The SAMPLE_LIMIT truncation branch of the new aggregation path has no test, so equality is unproven for windows over 200,000 documents
@@ -384,6 +393,7 @@ Recorded `open` this pass (tests lens). No repair attempted; the skip behavior i
 **Suggested fix:** Parameterize the cap (for example pass `sampleLimit` through `getAggregatedHistory`/`buildMongoBucketPipeline`, defaulting to the current `SAMPLE_LIMIT`) and add a `$documents` case with `limit + 2` synthetic documents that pins the truncated set, the cutoff tie, and the JSON rows below the cutoff. No behavior change required and no production data touched.
 **Resolution:**
 Recorded `open` this pass (tests lens); equality for ranges over the cap remains unproven, as the spec already notes.
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): unchanged - the cap correction (`backend/services/traffic-history.js:189-192,136-153`) still has no test, and this pass's parity window stayed under `SAMPLE_LIMIT`. Status stays `open` (P3).
 
 
 ### F-96 [P2] unverified - The printed "Dicetak" timestamp can be empty or one print stale because it is rendered only after the print snapshot
@@ -393,6 +403,8 @@ Recorded `open` this pass (tests lens); equality for ranges over the cap remains
 **Why it matters:** `printReport()` assigns `this.printTimestamp` and then calls `window.print()` in the same synchronous handler (`laporan-trafik.component.ts:299-300`). Angular writes the `{{ printTimestamp }}` interpolation (`laporan-trafik.component.html:18`) only during the change-detection pass that runs after the event handler returns, so in browsers that block the renderer and snapshot the current DOM while the print dialog is open (Chrome, Edge, Firefox) the printed header shows the value from before the click: empty on the first print ("Dicetak: ") and the previous print's timestamp on every print after that. The two new `printReport` tests assert only the component field (`component.printTimestamp` non-empty) and the temporary title, never the rendered header at print time, so `npm run verify` cannot catch it. The spec's claim that the print header shows the printed timestamp is therefore unproven.
 **Suggested fix:** Flush the view before printing, for example `this.printTimestamp = ...; this.cdr.detectChanges(); window.print();`, or set the field and print in a later task (`setTimeout`/`afterNextRender`). Extend the print test to capture the rendered `.print-report-meta` text inside the mocked `window.print()` so the timing is pinned. No behavior decision needed.
 **Resolution:** Recorded `unverified` this pass. The code path is confirmed by reading, but no desktop browser is connected to this session, so the actual print snapshot could not be exercised; the missing validation is a real Chrome/Edge print run (or a DOM capture inside a mocked `window.print`).
+Re-examined at target 7a7cc4e (2026-09-28, independent automatic review): `printReport()` now computes `printTimestamp` in the report's tz (`laporan-trafik.component.ts:323-327`) but still assigns it immediately before `window.print()` (`:328`) with no change-detection flush, so the print-snapshot timing the finding describes is unchanged. Still `unverified`; no browser available in this session.
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): unchanged - `printReport` still assigns `printTimestamp` immediately before `window.print()` with no change-detection flush (`laporan-trafik.component.ts:323-329`); no browser is available in this session. Still `unverified` (P2).
 
 
 ### F-97 [P3] open - README still advertises the removed CSV/JSON exports and omits the new Excel/PDF paths
@@ -402,6 +414,8 @@ Recorded `open` this pass (tests lens); equality for ranges over the cap remains
 **Why it matters:** This delta removes the Laporan Trafik JSON/CSV export and the Laporan CSV export, and ships `.xlsx` plus a print-to-PDF report, but the README feature list still says "Histori trafik ... + export CSV/JSON" (`:12`) and "Laporan gangguan & maintenance + filter + export CSV" (`:13`). The README is the self-host entry point, so it now describes downloads that no longer exist and omits both replacement paths.
 **Suggested fix:** Update the two bullets to name the `.xlsx` export (Laporan) and the print/PDF report (Laporan Trafik). Documentation only; no behavior change.
 **Resolution:** Recorded `open` this pass; the delta did not touch README.md, so the drift came from removing the features without updating the docs.
+Re-examined at target 7a7cc4e (2026-09-28, independent automatic review): the delta touched `README.md` only to add the timezone note (`:114-117`); the stale export bullets at `:12-13` are unchanged. Status stays `open` (P3).
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): `README.md:12-13` still advertise CSV/JSON exports, and this checkpoint's only README hunk is the timezone note (`:114-117`). Status stays `open` (P3).
 
 
 ### F-98 [P3] open - The updated smoke script cannot reach its new `/export/xlsx` check because every request is unauthenticated
@@ -411,3 +425,24 @@ Recorded `open` this pass (tests lens); equality for ranges over the cap remains
 **Why it matters:** This delta redirects the manual smoke script from the deleted `/export/csv` to `/export/xlsx` and adds a `PK` magic check, but the script sends no `Authorization` header while every `/api` route sits behind `auth.requireAuth` (`backend/server.js:50`, `backend/services/auth.js:115-128`). Its first call (`POST /api/laporan`, `backend/test-laporan.js:8-21`) therefore returns 401 and `data.data._id` throws, so the new check is unreachable and the script dies at step 1. Confirmed against the running dev server: `GET /api/laporan` with no token returned 401. The script predates auth, but the delta modified the file and its stated purpose is to keep the manual smoke path working.
 **Suggested fix:** Log in first (`POST /api/auth/login` with the env credentials) and send `Authorization: Bearer <token>` on the CRUD calls, or document in the file that a token is required and how to supply it. Dev-script only; no product behavior changes.
 **Resolution:** Recorded `open` this pass; confirmed by reading the middleware and by an unauthenticated `GET /api/laporan` returning 401 from the running backend.
+
+
+### F-100 [P3] open - DST window bounds drift an hour: midnight-skipping transitions and fixed-DAY_MS week/month starts
+
+**File:** backend/services/traffic-range.js:85-92,110-116; frontend/src/app/shared/period-window.ts:122-129,182-207
+**Found:** 2026-09-28 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** The spec requires the per-date offset to stay correct for any IANA zone, but two window-boundary paths are not. (1) `tzDayStart`'s two-step guess returns an instant one hour early when a DST transition skips local midnight: read-only probe `rangeBounds('2026-09-06','2026-09-06','America/Santiago')` gives start `2026-09-06T03:00:00Z` while the true first instant of that local date is `04:00:00Z` (same for `America/Havana` 2026-03-08), so a custom or one-day window includes an hour of the previous local day; New York and the Indonesian zones are unaffected. (2) The frontend computes `mingguan`/`bulanan`/fallback starts by subtracting fixed `N * DAY_MS` (`:184,188,203,206`) instead of the target day's start, so in any DST zone the window starts an hour early and the emitted `startDate` can name the previous day: `periodWindow('mingguan', 2026-03-30T10:00Z, Europe/Berlin)` returns `startDate '2026-03-23'` and start `22:00Z` where 24 Mar 00:00 +01 (`23:00Z`) is the intended start. The aggregation bucket keys themselves are per-date correct (verified by the Mongo parity run); only the query/window bounds drift.
+**Suggested fix:** Compute week/month starts with `tzDayStart(y, m, d - N)` (Date.UTC normalizes negative days) instead of fixed milliseconds, and resolve a day start by scanning forward to the first instant whose zoned date equals the target (or document the midnight-skipping limitation and drop the "any IANA zone" claim). No Indonesian behavior changes.
+**Resolution:** Recorded `open` this pass (P3); both cases reproduced read-only against the current modules.
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): both paths are still present - `tzDayStart`'s two-step guess (`backend/services/traffic-range.js:84-92`) and the frontend's fixed `DAY_MS` week/month starts (`frontend/src/app/shared/period-window.ts:182-207`). Indonesian zones stay unaffected and the bucket keys stay per-date correct (the preload parity run passed for all four zones), so P3 remains accurate. Status stays `open` (P3).
+
+
+### F-101 [P2] open - Per-sample `Intl` offset makes the Node aggregation path ~1 s per 25k samples and ~10.7 s at the 200k cap
+
+**File:** backend/services/traffic-range.js:68-82; backend/services/traffic-aggregate.js:84-100,167-191; backend/services/traffic-history.js:203-207,210-212
+**Found:** 2026-09-28 by /audit independent current (scope: current; lens: performance)
+**Why it matters:** `toTZ` now calls `tzOffsetMs`, which runs `Intl.DateTimeFormat.formatToParts` for EVERY sample, where the old `toWIB` was a constant add. Measured read-only on this machine: `tzOffsetMs` 200k calls ≈ 9.1 s, `aggregateSamplesInNode` 25k samples ≈ 1.0 s and 200k samples ≈ 10.7 s. Those match the two reachable Node paths: the documented JSON-only mode aggregates up to the JSON store's 25k cap (`traffic-history.js:210-212`), and the Mongo-failure fallback aggregates up to the 200k `SAMPLE_LIMIT` (`:203-207`). The main Mongo `$group` path is unaffected, but a fallback request now blocks the single-threaded backend for seconds and a JSON-only history request adds up to about a second of CPU per view.
+**Suggested fix:** Memoize the offset per zone and UTC 15-minute bucket (modern transitions fall on 15-minute boundaries) inside `tzOffsetMs`, or compute the offset once per day/bucket and reuse it across samples; behavior is unchanged and no dependency is needed. If the fallback path is considered out of contract, document that instead.
+**Resolution:** Recorded `open` this pass (P2); timings measured on the audit machine.
+Re-examined at target 2e3b14b (2026-09-28, independent automatic review): `tzOffsetMs` still runs `Intl...formatToParts` per call (`backend/services/traffic-range.js:68-82`) and the Node aggregation path still calls it once per sample (`backend/services/traffic-aggregate.js:84-100,167-191`), while the main Mongo `$dateToParts` path is unaffected; no new timings this pass, and the P2 classification stands. Status stays `open` (P2).
+

@@ -15,7 +15,7 @@
     <!-- Header yang hanya tampil saat dicetak / disimpan sebagai PDF -->
     <div class="print-only print-report-header">
       <div class="print-report-title">Laporan Trafik — {{ selectedSite }}</div>
-      <div class="print-report-meta">Periode: {{ selectedPeriod | titlecase }} · {{ getPeriodLabel() }} · Dicetak: {{ printTimestamp }}</div>
+      <div class="print-report-meta">Periode: {{ selectedPeriod | titlecase }} · {{ getPeriodLabel() }} · Zona: {{ timeZone }} · Dicetak: {{ printTimestamp }}</div>
     </div>
 
     <!-- Empty state: belum ada site -->
@@ -114,6 +114,10 @@
           <span>Trend bandwidth <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ selectedPeriod }}</span></span>
           <span *ngIf="isLiveRouterConnected" class="badge badge-ok" style="font-size:10px;padding:1px 6px;">
             Live MikroTik Terhubung
+          </span>
+          <span class="badge" style="font-size:10px;padding:1px 6px;"
+            title="Zona waktu laporan mengikuti browser; backend memvalidasi dan jatuh ke WIB bila nilainya tak dikenal">
+            zona: {{ timeZone }}
           </span>
           <span *ngIf="chartMissingBuckets > 0" style="font-size:10.5px;color:#B45309;font-weight:400;"
             title="Jam tanpa sample tidak digambar sebagai trafik nol — grafiknya putus di situ">

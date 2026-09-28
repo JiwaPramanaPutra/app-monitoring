@@ -7,7 +7,7 @@
 
 const mongoose = require('mongoose');
 const storage = require('../storage');
-const { SAMPLE_LIMIT, rangeBounds, mergeSamples, capSamples } = require('./traffic-range');
+const { SAMPLE_LIMIT, DEFAULT_TIME_ZONE, rangeBounds, mergeSamples, capSamples, resolveTimeZone } = require('./traffic-range');
 const {
     aggregateSamplesInNode,
     buildMongoBucketPipeline,
@@ -25,8 +25,8 @@ const {
  * sample atau tidak". Jawabannya boolean, jadi penggabungan tidak diperlukan —
  * cukup salah satu sumber yang berisi.
  */
-async function hasSamplesInRange(site, startDate, endDate) {
-    const { startMs, endMs } = rangeBounds(startDate, endDate);
+async function hasSamplesInRange(site, startDate, endDate, tz = DEFAULT_TIME_ZONE) {
+    const { startMs, endMs } = rangeBounds(startDate, endDate, resolveTimeZone(tz));
 
     if (mongoose.connection.readyState === 1) {
         try {
@@ -49,8 +49,8 @@ async function hasSamplesInRange(site, startDate, endDate) {
  * Dipakai jalur `raw=1` (widget grafik) dan test kesetaraan sebagai "cara lama".
  * Mengembalikan seluruh sample yang digabung, dideduplikasi, dan diurutkan.
  */
-async function getRawSamples(site, startDate, endDate) {
-    const { startMs, endMs } = rangeBounds(startDate, endDate);
+async function getRawSamples(site, startDate, endDate, tz = DEFAULT_TIME_ZONE) {
+    const { startMs, endMs } = rangeBounds(startDate, endDate, resolveTimeZone(tz));
 
     const collected = [];
     const sources = [];
@@ -153,14 +153,15 @@ async function dropTimestampsOutsideCap(TrafficSample, site, startMs, endMs, sta
 }
 
 /**
- * Riwayat teragregasi satu site: `$group` per bucket WIB di MongoDB, lalu
+ * Riwayat teragregasi satu site: `$group` per bucket zona `tz` di MongoDB, lalu
  * baris JSON yang belum terwakili di MongoDB digabungkan ke bucket yang sama.
  *
  * `tx`, `rx`, `samples`, `label`, urutan, `totalSamples`, dan `source` harus
  * identik dengan jalur lama (`getRawSamples` + `aggregateSamplesInNode`).
  */
-async function getAggregatedHistory(site, startDate, endDate, period) {
-    const { startMs, endMs } = rangeBounds(startDate, endDate);
+async function getAggregatedHistory(site, startDate, endDate, period, tz = DEFAULT_TIME_ZONE) {
+    const zone = resolveTimeZone(tz);
+    const { startMs, endMs } = rangeBounds(startDate, endDate, zone);
     const sources = [];
 
     let jsonSamples = storage.getTrafficHistory(site);
@@ -180,7 +181,7 @@ async function getAggregatedHistory(site, startDate, endDate, period) {
             const [total, rows, mongoTimestamps] = await Promise.all([
                 TrafficSample.countDocuments(mongoSampleQuery(site, startMs, endMs)),
                 TrafficSample.aggregate(
-                    buildMongoBucketPipeline({ site, startMs, endMs, period })
+                    buildMongoBucketPipeline({ site, startMs, endMs, period, tz: zone })
                 ).allowDiskUse(true),
                 mongoTimestampsForJson(TrafficSample, site, dates)
             ]);
@@ -191,7 +192,7 @@ async function getAggregatedHistory(site, startDate, endDate, period) {
             }
 
             groups = mongoRowsToGroups(rows);
-            groupJsonSamples(jsonSamples, period, mongoTimestamps, groups);
+            groupJsonSamples(jsonSamples, period, mongoTimestamps, groups, zone);
 
             sources.push('mongodb');
         } catch (e) {
@@ -199,15 +200,15 @@ async function getAggregatedHistory(site, startDate, endDate, period) {
             // server). Jangan menampilkan angka dari sumber yang hanya sebagian
             // terbaca: pakai cara lama yang hasilnya pasti setara.
             console.warn('MongoDB aggregate failed, memakai jalur lama:', e.message);
-            const fallback = await getRawSamples(site, startDate, endDate);
+            const fallback = await getRawSamples(site, startDate, endDate, zone);
             return {
                 source: fallback.source,
-                data: aggregateSamplesInNode(fallback.samples, period),
+                data: aggregateSamplesInNode(fallback.samples, period, zone),
                 totalSamples: fallback.samples.length
             };
         }
     } else {
-        groupJsonSamples(jsonSamples, period, null, groups);
+        groupJsonSamples(jsonSamples, period, null, groups, zone);
     }
 
     sources.push('json');

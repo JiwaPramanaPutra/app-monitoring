@@ -11,6 +11,7 @@ import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
 import { DeviceStatus, deviceStatusColor, deviceStatusIsDown } from '../../shared/device-status';
 import { managementActions, managementLabel, managementUrlFor } from '../../shared/management-url';
 import { niceSqrtCeiling } from '../../shared/chart-math';
+import { browserTimeZone, formatTzTime } from '../../shared/period-window';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
 
 export interface MonitoringDevice {
@@ -93,6 +94,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
   lastTx: string = '0 Kbps';
   peakRate: string = '0 Kbps';
   avgRate: string = '0 Kbps';
+  /** Zona waktu label widget trafik: IANA dari browser (badge + rentang waktu). */
+  timeZone = browserTimeZone();
 
   private trafficHistory: { txBps: number; rxBps: number; timestamp?: string | null }[] = [];
   private trafficTimer: any = null;
@@ -453,19 +456,17 @@ export class MonitoringComponent implements OnInit, OnDestroy {
     return fraction >= 1 ? `${rounded} ${this.chartYUnit}` : String(rounded);
   }
 
-  /** Rentang waktu isi grafik saat ini, mis. `10:01:23 – 10:02:53`. */
+  /**
+   * Rentang waktu isi grafik saat ini, mis. `10:01:23 – 10:02:53`.
+   *
+   * Diformat eksplisit di `timeZone` pengguna, bukan getter lokal, supaya jam
+   * yang tampil sama dengan jam label di halaman lain.
+   */
   get chartTimeRange(): string {
     const first = this.trafficHistory[0]?.timestamp;
     const last = this.trafficHistory[this.trafficHistory.length - 1]?.timestamp;
-    if (!first || !last) return '';
-    const hhmmss = (iso: string | null | undefined) => {
-      const d = iso ? new Date(iso) : null;
-      return d && !isNaN(d.getTime())
-        ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
-        : '';
-    };
-    const from = hhmmss(first);
-    const to = hhmmss(last);
+    const from = formatTzTime(first, this.timeZone);
+    const to = formatTzTime(last, this.timeZone);
     return from && to ? `${from} – ${to}` : '';
   }
 

@@ -111,6 +111,10 @@ Project-wide (root):
 - Frontend memanggil API lewat jalur relatif `/api/*`; saat development
   `frontend/proxy.conf.json` meneruskannya ke backend `:3000`, dan di Docker
   nginx yang mem-proxy. Tidak ada URL backend yang di-hardcode.
+- Laporan trafik memakai **zona waktu browser** (nama IANA, mis. `Asia/Makassar`)
+  untuk jendela tanggal, label grafik, dan log downtime; `tz` yang tidak dikenal
+  jatuh ke WIB (`Asia/Jakarta`). Data tersimpan tetap UTC/ISO — hanya perhitungan
+  dan tampilan yang mengikuti zona.
 - Konfigurasi router disimpan per site (halaman **Project & Site**) atau lewat
   environment; backend tidak pernah mengirim kredensial router/perangkat ke frontend.
 - Semua endpoint `/api/*` butuh JWT kecuali `/api/health` dan `/api/auth/login`.
