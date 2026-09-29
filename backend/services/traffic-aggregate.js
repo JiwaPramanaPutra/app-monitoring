@@ -135,8 +135,13 @@ function finalizeBuckets(groups, period) {
                 rx: +(group.rxSum / group.count).toFixed(2),
                 samples: group.count
             });
-        } else if (period === 'harian' || period === 'tahunan') {
-            // Tampilkan slot kosong untuk jam/bulan yang tidak ada data.
+        } else {
+            // Slot kosong ditampilkan untuk SEMUA periode grid (harian,
+            // mingguan, bulanan, tahunan) supaya label sumbu tidak bolong saat
+            // datanya memang tidak ada. Nilainya `samples: 0`; grafik
+            // menggambarnya sebagai celah (bukan trafik nol) dan tooltip
+            // menandainya "Tidak ada data". `custom` tidak pernah masuk sini
+            // karena `sortedKeys`-nya hanya berisi key yang punya data.
             result.push({ label: labelOf(key, period), tx: 0, rx: 0, samples: 0 });
         }
     }

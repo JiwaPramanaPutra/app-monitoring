@@ -255,6 +255,40 @@ describe('LaporanTrafikComponent — skala stabil', () => {
   });
 });
 
+describe('LaporanTrafikComponent — bucket tanpa sample jadi celah', () => {
+  it('slot kosong di tengah memutus garis menjadi dua subpath', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.chartData = [
+      { label: 'Senin', tx: 5, rx: 5, samples: 3 },
+      { label: 'Selasa', tx: 5, rx: 5, samples: 3 },
+      { label: 'Rabu', tx: 0, rx: 0, samples: 0 },   // tidak ada data
+      { label: 'Kamis', tx: 5, rx: 5, samples: 3 },
+      { label: 'Jumat', tx: 5, rx: 5, samples: 3 }
+    ];
+    component.chartMaxValue = 10;
+
+    (component as any).generateChartPaths();
+
+    // Dua `M` = dua subpath; titik Rabu (x=50) tidak digambar sama sekali.
+    expect(component.txPath).toBe('M 0.00 65.00 L 25.00 65.00 M 75.00 65.00 L 100.00 65.00');
+    expect(component.rxPath).toBe(component.txPath);
+  });
+
+  it('slot kosong di ujung tidak menarik garis ke titik palsu', () => {
+    const component = makeComponent(() => Promise.resolve({ ok: false } as any));
+    component.chartData = [
+      { label: 'Rabu', tx: 0, rx: 0, samples: 0 },   // tidak ada data, di ujung kiri
+      { label: 'Kamis', tx: 5, rx: 5, samples: 2 }
+    ];
+    component.chartMaxValue = 10;
+
+    (component as any).generateChartPaths();
+
+    expect(component.txPath).toBe('M 100.00 65.00');
+    expect(component.rxPath).toBe('M 100.00 65.00');
+  });
+});
+
 describe('LaporanTrafikComponent.generateUptimeData — waktu event (F-99)', () => {
   it('memakai instan ISO, bukan string waktu-dinding server', async () => {
     // Event di awal hari zona terpilih supaya tidak bergantung jam berapa tes

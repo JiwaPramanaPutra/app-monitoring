@@ -190,18 +190,6 @@ Re-examined at target 55fe88f (2026-09-25, independent automatic review): the me
 Re-examined at target ba634ef (2026-09-26, independent automatic review): the read path moved out of `server.js` into `backend/services/traffic-history.js`, and the Mongo integration suite now exercises the real `getRawSamples` and `getAggregatedHistory` end to end - it ran against MongoDB in this pass (22,807 real samples, all five periods `deepStrictEqual` including `source` and `totalSamples`), so the read-wiring half is covered while MongoDB is reachable. The collector-side half is unchanged: the `isIdleSample` gate and the `ongoing ? (ongoing.kind || 'unreachable') : null` normalization (`backend/server.js:691,704`) still have no test, and `hasSamplesInRange` (`backend/services/traffic-history.js:28-44`) is still only covered indirectly. Status stays `open` (P3).
 
 
-### F-62 [P3] open - `aggregateSamples` omits empty buckets for `mingguan`, `bulanan`, and `custom`, so the gap marker never engages there
-
-**File:** backend/server.js:504-546; frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:629-632, 648-688
-**Found:** 2026-09-25 by /audit independent current (scope: current; lens: quality)
-**Why it matters:** Zero-sample slots are emitted only for `harian` and `tahunan`; the other periods return only keys that had samples, so a fully missing day or week is not a gap - the chart interpolates straight through it and `chartMissingBuckets` reports 0. The spec's "Bucket kosong ditandai ... grafik menggambarnya sebagai celah, bukan 0" is fully met only for the hourly/monthly views, while the daily view used to see history since 14/9 is the `custom` path, where a missing day is invisible.
-**Suggested fix:** Fill the requested day/week slots for the `custom` (and `mingguan`) keys with `samples: 0`, as the `harian`/`tahunan` branches already do.
-**Resolution:** Re-confirmed at target 94bfb00 (2026-09-25, independent automatic review): `aggregateSamples` still emits zero-sample slots only for `harian`/`tahunan` (`backend/server.js:534-545`), so `mingguan`, `bulanan`, and `custom` return only keys that had samples and the gap marker stays inert there (`frontend/src/app/pages/laporan-trafik/laporan-trafik.component.ts:639-641`). Status stays `open` (P3).
-Re-confirmed at target dd43d25 (2026-09-25, independent automatic review): unchanged - the zero-slot branch is still gated on `['harian', 'tahunan'].includes(period)` (`backend/server.js:535-545`), and the frontend gap logic keys off the `samples` field that every emitted bucket carries (`:533`). Status stays `open` (P3).
-Re-examined at 901504f (2026-09-25, /audit scope: full; lens: quality): the zero-sample branch is still gated on `['harian', 'tahunan'].includes(period)` (`backend/server.js:535`), so `mingguan`, `bulanan`, and `custom` return only days/weeks that had samples and the gap marker stays inert exactly where the daily history view is used. Status stays `open` (P3).
-Re-examined at target ba634ef (2026-09-26, independent automatic review): the aggregation moved to `backend/services/traffic-aggregate.js`; the zero-slot branch is still gated on `harian`/`tahunan` in `finalizeBuckets` (`:136-139`), so `mingguan`, `bulanan`, and `custom` still emit only slots that had samples and the frontend gap marker stays inert there. Status stays `open` (P3).
-
-
 ### F-63 [P3] open - Hand-editing `backend/data/traffic_history.json` while the backend runs is silently clobbered
 
 **File:** backend/storage.js:108-122 (`scheduleSaveTraffic`); backend/server.js:819-824, 861 (collector writes every 6 s)
@@ -334,6 +322,7 @@ Re-examined at target 16943c8 (2026-09-26, independent automatic review, current
 Recorded `open` this pass; reproduced read-only against the live MongoDB with `$documents`. No app path stores NaN today, so the impact is latent until a foreign document is imported.
 Re-verified at target ba634ef (2026-09-26, independent automatic review, current receipt): independently reproduced read-only against the live MongoDB - `$eq: ['$x','$x']` returns true for a Double NaN, and a single bucket holding a NaN tx, a valid sample, and (via F-91) a string-timestamp sample yields old-path tx 2.33 but new-path tx 0; the NaN half alone accounts for the whole-bucket zeroing through `$sum` + `row.tx || 0`. A fresh live scan found 0 NaN `txMbps`/`rxMbps` among 54,003 documents and `mongoose` rejects a NaN `txMbps` in memory (Number cast error), so the defect stays latent for app-written data. Status stays `open` (P2).
 Re-examined at target 2e3b14b (2026-09-28, independent automatic review) by reading, no new live probe: the timezone work did not touch the numeric coercion - the self-equality NaN test is still `{ $eq: [field, field] }` (`backend/services/traffic-aggregate.js:193-202`) and no `$documents` NaN case was added to the integration suite. Status stays `open` (P2).
+Re-examined at target 31cc9a0 (2026-09-29, independent automatic review): this fix only changes the zero-fill branch in `finalizeBuckets` and does not touch `toNumericExpression`; the self-equality NaN test remains (`backend/services/traffic-aggregate.js:199-207`) and no NaN `$documents` case was added. Status stays `open` (P2).
 
 
 ### F-91 [P3] open - Mongo documents with parseable string or number timestamps are dropped by the pipeline but counted by the old path
@@ -346,6 +335,7 @@ Re-examined at target 2e3b14b (2026-09-28, independent automatic review) by read
 Recorded `open` this pass; reproduced read-only against the live MongoDB with `$documents`.
 Re-verified at target ba634ef (2026-09-26, independent automatic review, current receipt): independently reproduced read-only - the same probe's document with a parseable string timestamp is counted by `mergeSamples` + `aggregateSamplesInNode` (3 samples, tx 2.33) and dropped by the pipeline's `$type: 'date'` filter (2 samples, tx 0). A fresh live scan found 0 non-Date `timestamp` values among 54,003 documents, so only foreign-imported data is affected; the cap interaction shares this root cause. Status stays `open` (P3).
 Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the pipeline still filters `{ timestamp: { $type: 'date' } }` after `$sort`/`$limit` (`backend/services/traffic-aggregate.js:285-289`) while the old path still accepts parseable string/number timestamps through `mergeSamples` (`backend/services/traffic-range.js:172-185`); unchanged by the timezone work. Status stays `open` (P3).
+Re-examined at target 31cc9a0 (2026-09-29, independent automatic review): this fix only changes the zero-fill branch in `finalizeBuckets` and does not touch the `$type: 'date'` timestamp filter or `mergeSamples`; the discrepancy between pipeline and old path for string/number timestamps remains. Status stays `open` (P3).
 
 
 ### F-92 [P3] unverified - A concurrent write that lands between the distinct and aggregate reads can be counted twice
@@ -383,6 +373,7 @@ Re-examined at target 2e3b14b (2026-09-28, independent automatic review): this p
 Recorded `open` this pass (tests lens). No repair attempted; the skip behavior is deliberate for offline machines, so this is an evidence-pinning gap, not a product defect.
 Re-examined at target 7a7cc4e (2026-09-28, independent automatic review): with a local DNS preload the suite ran against the live MongoDB - 244 pass, 0 skip - including the synthetic `$documents` cases, the deterministic fuzz, and the real-data comparison (40,107 samples at Poltekkes Gizi for Asia/Jakarta, Asia/Makassar, Asia/Jayapura, and UTC across all five periods, `deepStrictEqual`), so the equality proof is reproducible when Mongo is reachable. The default `npm run verify` still self-skips it on the local DNS failure and no committed command forces it. Status stays `open` (P3).
 Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the default `npm run verify` skipped the whole suite as one skip (`querySrv ECONNREFUSED`), while the read-only preload run reproduced the full proof - 244/244 pass, 0 skip, all three subtests ran: synthetic `$documents` (4 zones x 5 periods), deterministic fuzz (240 samples), and real data (Poltekkes Gizi, 40,107 samples, 4 zones x 5 periods). The equality claim remains reproducible only when MongoDB is reachable and no committed command forces it. Status stays `open` (P3).
+Re-examined at target 31cc9a0 (2026-09-29, independent automatic review): the default `npm run verify` again skipped the Mongo parity suite because the local DNS cannot resolve the Atlas SRV record (`querySrv ECONNREFUSED`). With the DNS preload run, the suite passed 244/0 including synthetic `$documents`, deterministic fuzz, and real data (Poltekkes Gizi, 41,994 samples, 4 zones x 5 periods, `deepStrictEqual`). No committed command forces the preload run, so the equality claim is still not pinned by a green default verify elsewhere. Status stays `open` (P3).
 
 
 ### F-95 [P3] open - The SAMPLE_LIMIT truncation branch of the new aggregation path has no test, so equality is unproven for windows over 200,000 documents
@@ -394,6 +385,7 @@ Re-examined at target 2e3b14b (2026-09-28, independent automatic review): the de
 **Resolution:**
 Recorded `open` this pass (tests lens); equality for ranges over the cap remains unproven, as the spec already notes.
 Re-examined at target 2e3b14b (2026-09-28, independent automatic review): unchanged - the cap correction (`backend/services/traffic-history.js:189-192,136-153`) still has no test, and this pass's parity window stayed under `SAMPLE_LIMIT`. Status stays `open` (P3).
+Re-examined at target 31cc9a0 (2026-09-29, independent automatic review): unchanged - this fix only affects zero-fill in `finalizeBuckets` and does not touch the cap correction or `SAMPLE_LIMIT`; the parity window again stayed well under the cap. Status stays `open` (P3).
 
 
 ### F-96 [P2] unverified - The printed "Dicetak" timestamp can be empty or one print stale because it is rendered only after the print snapshot
@@ -445,6 +437,7 @@ Re-examined at target 2e3b14b (2026-09-28, independent automatic review): both p
 **Suggested fix:** Memoize the offset per zone and UTC 15-minute bucket (modern transitions fall on 15-minute boundaries) inside `tzOffsetMs`, or compute the offset once per day/bucket and reuse it across samples; behavior is unchanged and no dependency is needed. If the fallback path is considered out of contract, document that instead.
 **Resolution:** Recorded `open` this pass (P2); timings measured on the audit machine.
 Re-examined at target 2e3b14b (2026-09-28, independent automatic review): `tzOffsetMs` still runs `Intl...formatToParts` per call (`backend/services/traffic-range.js:68-82`) and the Node aggregation path still calls it once per sample (`backend/services/traffic-aggregate.js:84-100,167-191`), while the main Mongo `$dateToParts` path is unaffected; no new timings this pass, and the P2 classification stands. Status stays `open` (P2).
+Re-examined at target 31cc9a0 (2026-09-29, independent automatic review): this fix only changes the zero-fill branch in `finalizeBuckets`; it does not change `tzOffsetMs` or the per-sample Node aggregation path, so the measured performance impact on JSON-only and Mongo-fallback paths remains. Status stays `open` (P2).
 
 
 ### F-102 [P2] open - KPI "Laporan Bulan Ini" navigates to /laporan with an ignored query param

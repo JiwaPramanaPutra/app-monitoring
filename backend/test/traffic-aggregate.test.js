@@ -36,16 +36,18 @@ test('harian: per jam WIB, slot kosong diisi nol, urutan 00–23', () => {
     assert.deepEqual(result[23], { label: '23:00', tx: 1, rx: 10, samples: 1 });
 });
 
-test('mingguan: label Senin–Minggu, hanya hari berisi data yang tampil', () => {
+test('mingguan: label Senin–Minggu selalu lengkap; hari tanpa data jadi slot kosong', () => {
     const result = aggregateSamplesInNode([
         s('2026-09-06T16:59:00.000Z', 1, 1), // Minggu 23:59 WIB
         s('2026-09-06T17:00:00.000Z', 2, 2), // Senin 00:00 WIB
         s('2026-09-13T17:00:00.000Z', 3, 3)  // Senin minggu berikutnya
     ], 'mingguan');
 
-    assert.deepEqual(result.map(r => r.label), ['Senin', 'Minggu']);
+    assert.deepEqual(result.map(r => r.label),
+        ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']);
     assert.deepEqual(result[0], { label: 'Senin', tx: 2.5, rx: 2.5, samples: 2 });
-    assert.deepEqual(result[1], { label: 'Minggu', tx: 1, rx: 1, samples: 1 });
+    assert.deepEqual(result[2], { label: 'Rabu', tx: 0, rx: 0, samples: 0 });
+    assert.deepEqual(result[6], { label: 'Minggu', tx: 1, rx: 1, samples: 1 });
 });
 
 test('bulanan: minggu 1–4 dihitung dari tanggal WIB (tanggal 8 masuk Minggu 2)', () => {
@@ -56,10 +58,11 @@ test('bulanan: minggu 1–4 dihitung dari tanggal WIB (tanggal 8 masuk Minggu 2)
         s('2026-09-30T17:00:00.000Z', 4, 4)  // 1 Okt WIB  -> mg1
     ], 'bulanan');
 
-    assert.deepEqual(result.map(r => r.label), ['Minggu 1', 'Minggu 2', 'Minggu 4']);
+    assert.deepEqual(result.map(r => r.label), ['Minggu 1', 'Minggu 2', 'Minggu 3', 'Minggu 4']);
     assert.deepEqual(result[0], { label: 'Minggu 1', tx: 2.5, rx: 2.5, samples: 2 });
     assert.deepEqual(result[1], { label: 'Minggu 2', tx: 2, rx: 2, samples: 1 });
-    assert.deepEqual(result[2], { label: 'Minggu 4', tx: 3, rx: 3, samples: 1 });
+    assert.deepEqual(result[2], { label: 'Minggu 3', tx: 0, rx: 0, samples: 0 });
+    assert.deepEqual(result[3], { label: 'Minggu 4', tx: 3, rx: 3, samples: 1 });
 });
 
 test('tahunan: bulan dihitung menurut WIB, tengah malam WIB pindah bulan', () => {
@@ -182,6 +185,8 @@ test('baris hasil pipeline dibaca sebagai kelompok bucket', () => {
 
     assert.deepEqual(finalizeBuckets(groups, 'bulanan'), [
         { label: 'Minggu 1', tx: 5, rx: 10, samples: 2 },
+        { label: 'Minggu 2', tx: 0, rx: 0, samples: 0 },
+        { label: 'Minggu 3', tx: 0, rx: 0, samples: 0 },
         { label: 'Minggu 4', tx: 4, rx: 4, samples: 1 }
     ]);
 });
@@ -228,8 +233,10 @@ test('custom: tanggal bucket bergeser menurut tz', () => {
 test('mingguan/tahunan/bulanan: pergeseran hari memindahkan bucket', () => {
     // 6 Sep 2026 16:59Z = Minggu 23:59 WIB, tetapi sudah Senin 00:59 WITA.
     const minggu = [s('2026-09-06T16:59:00.000Z', 1, 1)];
-    assert.deepEqual(aggregateSamplesInNode(minggu, 'mingguan', 'Asia/Jakarta').map(r => r.label), ['Minggu']);
-    assert.deepEqual(aggregateSamplesInNode(minggu, 'mingguan', 'Asia/Makassar').map(r => r.label), ['Senin']);
+    const hariBerisi = (tz) => aggregateSamplesInNode(minggu, 'mingguan', tz)
+        .filter(r => r.samples > 0).map(r => r.label);
+    assert.deepEqual(hariBerisi('Asia/Jakarta'), ['Minggu']);
+    assert.deepEqual(hariBerisi('Asia/Makassar'), ['Senin']);
 
     // 31 Des 2026 16:59Z = 31 Des 23:59 WIB, tetapi 1 Jan 2027 00:59 Jayapura.
     const tahun = [s('2026-12-31T16:59:00.000Z', 1, 1)];
@@ -240,8 +247,10 @@ test('mingguan/tahunan/bulanan: pergeseran hari memindahkan bucket', () => {
 
     // 30 Sep 2026 17:00Z = 1 Okt 00:00 WIB (Minggu 1), masih 30 Sep di UTC (Minggu 4).
     const bulan = [s('2026-09-30T17:00:00.000Z', 1, 1)];
-    assert.deepEqual(aggregateSamplesInNode(bulan, 'bulanan', 'Asia/Jakarta').map(r => r.label), ['Minggu 1']);
-    assert.deepEqual(aggregateSamplesInNode(bulan, 'bulanan', 'UTC').map(r => r.label), ['Minggu 4']);
+    const mingguBerisi = (tz) => aggregateSamplesInNode(bulan, 'bulanan', tz)
+        .filter(r => r.samples > 0).map(r => r.label);
+    assert.deepEqual(mingguBerisi('Asia/Jakarta'), ['Minggu 1']);
+    assert.deepEqual(mingguBerisi('UTC'), ['Minggu 4']);
 });
 
 test('tanpa tz, bucket dihitung dengan WIB seperti sebelumnya', () => {
