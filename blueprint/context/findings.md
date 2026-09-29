@@ -446,3 +446,30 @@ Re-examined at target 2e3b14b (2026-09-28, independent automatic review): both p
 **Resolution:** Recorded `open` this pass (P2); timings measured on the audit machine.
 Re-examined at target 2e3b14b (2026-09-28, independent automatic review): `tzOffsetMs` still runs `Intl...formatToParts` per call (`backend/services/traffic-range.js:68-82`) and the Node aggregation path still calls it once per sample (`backend/services/traffic-aggregate.js:84-100,167-191`), while the main Mongo `$dateToParts` path is unaffected; no new timings this pass, and the P2 classification stands. Status stays `open` (P2).
 
+
+### F-102 [P2] open - KPI "Laporan Bulan Ini" navigates to /laporan with an ignored query param
+
+**File:** frontend/src/app/pages/dashboard/dashboard.component.ts:149-150; frontend/src/app/pages/laporan/laporan.component.ts:61-79
+**Found:** 2026-09-29 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** `goToLaporanBulanIni()` sends `{ period: 'currentMonth' }`, but `LaporanComponent` never reads query params, so the click lands on an unfiltered report list. The spec advertises the KPI card as navigation to the current month's reports; the link therefore breaks that contract.
+**Suggested fix:** Read `period` in `LaporanComponent.ngOnInit`, set the date filter to the current month, and call `loadReports()`; or remove the query param and the clickable styling until the filter is implemented.
+**Resolution:**
+
+
+### F-103 [P3] open - Overlapping loadDashboard calls are not serialized
+
+**File:** frontend/src/app/pages/dashboard/dashboard.component.ts:64-66,81-126
+**Found:** 2026-09-29 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** `ngOnInit` starts a 2-minute interval and the "Muat ulang" button both call `loadDashboard`. The method is async and unguarded, so a manual reload while an auto-refresh is in flight (or two rapid clicks) runs two requests concurrently. The `loading` flag is toggled by whichever finishes last, and the earlier response can overwrite the later one, leaving the dashboard showing stale data. This is the same request-race class already recorded for `fetchRouterTraffic` (F-74).
+**Suggested fix:** Guard with an `isLoading` promise/abort flag so overlapping calls are skipped or cancelled (for example, return early when `this.loading` is already true, or use `AbortController` per call and ignore stale resolutions).
+**Resolution:**
+
+
+### F-104 [P3] open - Dead responsive CSS rule references a non-existent grid class
+
+**File:** frontend/src/app/pages/dashboard/dashboard.component.css:313-317
+**Found:** 2026-09-29 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** The media query defines `.dashboard-grid-2 { grid-template-columns: 60% 1fr; }`, but the template only uses `dashboard-grid-4` and `dashboard-grid-3`. The rule is unreachable and adds noise; it is leftover from an earlier layout.
+**Suggested fix:** Remove the `.dashboard-grid-2` block.
+**Resolution:**
+

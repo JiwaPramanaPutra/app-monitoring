@@ -8,6 +8,14 @@
         <h2 style="font-size:18px;">Dashboard</h2>
         <div style="font-size:12px;color:var(--muted);margin-top:4px;">Ringkasan kondisi jaringan seluruh site · update tiap 2 menit</div>
       </div>
+      <div class="header-actions">
+        <span class="update-stamp mono" *ngIf="loading || lastUpdated">
+          {{ loading ? 'Memuat…' : 'Diperbarui ' + updatedLabel }}
+        </span>
+        <button class="btn btn-outline btn-sm" (click)="loadDashboard()" [disabled]="loading">
+          {{ loading ? 'Memuat…' : 'Muat ulang' }}
+        </button>
+      </div>
     </div>
 
     <!-- ① KPI Cards -->
@@ -43,7 +51,13 @@
       <!-- Network Availability -->
       <div class="card kpi-card">
         <div class="kpi-label">Network Availability</div>
-        <div class="kpi-value mono">{{ kpi.networkAvailability }}<span class="kpi-sub">%</span></div>
+        <ng-container *ngIf="kpi.networkAvailability !== null; else availabilityEmpty">
+          <div class="kpi-value mono">{{ kpi.networkAvailability }}<span class="kpi-sub">%</span></div>
+        </ng-container>
+        <ng-template #availabilityEmpty>
+          <div class="kpi-value mono">—</div>
+          <div class="kpi-note">belum ada perangkat terpantau</div>
+        </ng-template>
         <div class="kpi-icon kpi-icon--muted">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
@@ -70,7 +84,7 @@
     <!-- ② Kesehatan Jaringan per Site -->
     <div class="card" style="margin-bottom:14px;">
       <div class="card-title">Kesehatan Jaringan per Site</div>
-      <div class="site-grid">
+      <div class="site-grid" *ngIf="sites.length > 0; else noSites">
         <div
           class="site-card"
           *ngFor="let site of sites"
@@ -105,15 +119,21 @@
           <div class="site-card-link">Lihat Monitoring →</div>
         </div>
       </div>
+      <ng-template #noSites>
+        <div class="empty-state">
+          Belum ada site terdaftar. Buat project &amp; site pertama di
+          <a routerLink="/project-site">Project &amp; Site</a>.
+        </div>
+      </ng-template>
     </div>
 
     <!-- ③ Perangkat Bermasalah, Laporan Terbaru & Aktivitas Sistem -->
     <div class="dashboard-grid-3">
 
       <!-- Perangkat Bermasalah (max 3) -->
-      <div class="card" style="display:flex; flex-direction:column;">
+      <div class="card panel-card">
         <div class="card-title">Perangkat Bermasalah</div>
-        <div style="display:flex;flex-direction:column;flex:1;">
+        <div class="panel-body">
           <div class="problem-item" *ngFor="let device of perangkatBermasalah">
             <div class="dot" [style.background]="device.statusColor" style="margin-top:4px;"></div>
             <div style="flex:1;">
@@ -121,42 +141,50 @@
               <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">{{ device.type }} · {{ device.location }}</div>
               <div style="font-size:12px;margin-top:6px;color:var(--ink);">
                 {{ device.problem }}
-                <span style="color:var(--muted);">· {{ device.duration }}</span>
+                <span class="mono" style="color:var(--muted);">· {{ device.ip }}</span>
               </div>
             </div>
           </div>
+          <div class="empty-state" *ngIf="perangkatBermasalah.length === 0">
+            Semua perangkat sehat ✓
+          </div>
         </div>
-        <div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);">
+        <div class="panel-footer">
           <a routerLink="/monitoring" class="nav-link-cta">Lihat semua perangkat →</a>
         </div>
       </div>
 
       <!-- Laporan Terbaru (max 3) -->
-      <div class="card" style="display:flex; flex-direction:column;">
+      <div class="card panel-card">
         <div class="card-title">Laporan Terbaru</div>
-        <div style="display:flex;flex-direction:column;flex:1;">
+        <div class="panel-body">
           <div class="report-item" *ngFor="let report of recentReports">
-            <div class="mono" style="font-size:10.5px;color:var(--muted);">{{ report.date }} · {{ report.time }}</div>
+            <div class="mono" style="font-size:10.5px;color:var(--muted);">
+              {{ report.date }}<ng-container *ngIf="report.time"> · {{ report.time }}</ng-container>
+            </div>
             <div style="font-size:13px;font-weight:500;color:var(--ink);">{{ report.content }}</div>
-            <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
               <div style="font-size:11px;color:var(--muted);">
                 {{ report.site }} · <span style="color:var(--ink);">{{ report.technician }}</span>
               </div>
-              <div class="badge" [style.background]="'var(--paper)'" [style.color]="report.color" style="font-weight:600;font-size:10.5px;">
-                {{ report.priority }}
+              <div class="badge" [style.background]="'var(--paper)'" [style.color]="report.color" style="font-weight:600;font-size:10.5px;max-width:50%;text-align:right;line-height:1.2;">
+                {{ report.type }}
               </div>
             </div>
           </div>
+          <div class="empty-state" *ngIf="recentReports.length === 0">
+            Belum ada laporan tercatat.
+          </div>
         </div>
-        <div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);">
+        <div class="panel-footer">
           <a routerLink="/laporan" class="nav-link-cta">Lihat semua laporan →</a>
         </div>
       </div>
 
       <!-- Aktivitas Sistem (max 5) -->
-      <div class="card" style="display:flex; flex-direction:column;">
+      <div class="card panel-card">
         <div class="card-title">Aktivitas Sistem</div>
-        <div style="display:flex;flex-direction:column;flex:1;">
+        <div class="panel-body">
           <div class="activity-item" *ngFor="let activity of systemActivities">
             <div class="activity-dot"></div>
             <div style="flex:1;">
@@ -164,8 +192,11 @@
               <div style="font-size:12.5px;">{{ activity.content }}</div>
             </div>
           </div>
+          <div class="empty-state" *ngIf="systemActivities.length === 0">
+            Belum ada aktivitas downtime / pemulihan.
+          </div>
         </div>
-        <div style="margin-top:12px;padding-top:10px;border-top:0.5px solid var(--border);">
+        <div class="panel-footer">
           <!-- Catatan: belum ada page khusus aktivitas, link ke /laporan sementara -->
           <a routerLink="/laporan" class="nav-link-cta">Lihat semua aktivitas →</a>
         </div>

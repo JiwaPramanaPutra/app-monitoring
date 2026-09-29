@@ -70,6 +70,62 @@
   opacity: 0.12;
 }
 
+.kpi-note {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+}
+
+/* Header actions + panel bawah */
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.update-stamp {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.panel-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.panel-footer {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 0.5px solid var(--border);
+}
+
+.empty-state {
+  padding: 18px 6px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.empty-state a {
+  color: var(--primary);
+  font-weight: 500;
+}
+
 /* ============================================
    Kesehatan Site — Card Grid
    ============================================ */
