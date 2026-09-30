@@ -22,6 +22,7 @@ const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
 const { claimableStatus, advancePingState, shouldNotify, deviceStateKey } = require('./services/device-status');
 const { withoutMeasuredStatus } = require('./services/device-payload');
+const { PING_TIMEOUT_SECONDS } = require('./services/ping-settings');
 const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan } = require('./services/laporan-utils');
@@ -758,7 +759,7 @@ async function startBackgroundDevicePinger() {
 
                 let alive = false;
                 try {
-                    const pingRes = await ping.promise.probe(d.ip, { timeout: 2 });
+                    const pingRes = await ping.promise.probe(d.ip, { timeout: PING_TIMEOUT_SECONDS });
                     alive = !!pingRes.alive;
                 } catch (e) {
                     alive = false;
@@ -825,7 +826,7 @@ app.post('/api/ping', async (req, res) => {
     try {
         // Catatan: flag '-c 1' tidak valid di Windows (butuh admin), cukup gunakan timeout saja
         const pingRes = await ping.promise.probe(host, {
-            timeout: 2
+            timeout: PING_TIMEOUT_SECONDS
         });
 
         const isAlive = pingRes.alive;
@@ -884,7 +885,7 @@ app.get('/api/devices/status', async (req, res) => {
             devices.map(async (d) => {
                 if (!d.ip || d.ip === '—') return { host: d.ip, alive: false, timeMs: null };
                 try {
-                    const r = await ping.promise.probe(d.ip, { timeout: 1.5 });
+                    const r = await ping.promise.probe(d.ip, { timeout: PING_TIMEOUT_SECONDS });
                     const timeMs = r.time === 'unknown' ? null : parseFloat(r.time);
                     return { host: d.ip, alive: r.alive, timeMs };
                 } catch (e) {
@@ -935,7 +936,7 @@ app.post('/api/ping-all', async (req, res) => {
     const results = await Promise.all(
         validHosts.map(async (host) => {
             try {
-                const pingRes = await ping.promise.probe(host, { timeout: 1.5 });
+                const pingRes = await ping.promise.probe(host, { timeout: PING_TIMEOUT_SECONDS });
                 const timeMs = pingRes.time === 'unknown' ? null : parseFloat(pingRes.time);
                 return {
                     host,
