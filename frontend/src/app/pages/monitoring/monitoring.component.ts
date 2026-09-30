@@ -10,6 +10,7 @@ import { AuthService } from '../../services/auth.service';
 import { deviceKey, findDuplicateIp } from '../../shared/device-identity';
 import { DeviceStatus, deviceStatusColor, deviceStatusIsDown } from '../../shared/device-status';
 import { managementActions, managementLabel, managementUrlFor } from '../../shared/management-url';
+import { deviceWritePayload } from '../../shared/device-payload';
 import { niceSqrtCeiling } from '../../shared/chart-math';
 import { browserTimeZone, formatTzTime } from '../../shared/period-window';
 import { BridgeDraft, bridgeDraftError, hasRouterDeviceFor, hasTrafficRouterConfig, leavesSiteWithoutRouter, trafficRouterNoteFor } from '../../shared/router-traffic-link';
@@ -750,7 +751,9 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       const res = await this.api.fetch(`/api/devices/${devId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(this.editingDevice)
+        // `status` tidak ikut: perangkat yang tampil "Tidak Terpantau" akan
+        // mengirim nilai itu apa adanya dan ditolak enum model di mode MongoDB.
+        body: JSON.stringify(deviceWritePayload(this.editingDevice))
       });
       const data = await res.json();
       this.isSavingEdit = false;
@@ -1268,7 +1271,8 @@ export class MonitoringComponent implements OnInit, OnDestroy {
       const res = await this.api.fetch('/api/devices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(deviceToAdd)
+        // `status` tidak ikut: ia hasil pengukuran, bukan input pengguna.
+        body: JSON.stringify(deviceWritePayload(deviceToAdd))
       });
       if (res.ok) {
         const resData = await res.json();

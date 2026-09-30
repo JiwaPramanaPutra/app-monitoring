@@ -21,6 +21,7 @@ const { buildOfflineFallback, toChartSamples } = require('./services/traffic-res
 const { describeRouterError } = require('./services/router-errors');
 const { isUsableDeviceIp, findDeviceIpClash, deviceIpClashMessage } = require('./services/device-identity');
 const { claimableStatus, advancePingState, shouldNotify, deviceStateKey } = require('./services/device-status');
+const { withoutMeasuredStatus } = require('./services/device-payload');
 const { decideDowntimeAction, isIdleSample, shouldLogFailure } = require('./services/downtime-classify');
 const { normalizeNestedIds } = require('./services/project-utils');
 const { filterLaporan } = require('./services/laporan-utils');
@@ -1105,19 +1106,23 @@ async function deviceIpClashError(body, excludeId) {
 
 app.post('/api/devices', async (req, res) => {
     try {
-        const clashError = await deviceIpClashError(req.body);
+        // `status` dari klien diabaikan: ia hasil pengukuran, bukan input
+        // pengguna, dan nilai tampilan ("Tidak Terpantau") tidak ada di enum
+        // model — dulu ini membuat simpan gagal 500 di mode MongoDB.
+        const payload = withoutMeasuredStatus(req.body);
+        const clashError = await deviceIpClashError(payload);
         if (clashError) return res.status(409).json({ success: false, error: clashError });
 
         let newDevice;
         if (mongoose.connection.readyState === 1) {
-            newDevice = new Device(req.body);
+            newDevice = new Device(payload);
             await newDevice.save();
         } else {
             // Pakai nilai balik `saveLocalDevice`: di mode lokal kunci yang
             // tersimpan bisa berbeda dari yang dikirim klien (bentrok kunci
             // diganti), dan tanpa `_id` itu klien memegang perangkat dengan
             // kunci kosong sehingga DELETE/PUT berikutnya mengenai record lain.
-            newDevice = storage.saveLocalDevice(req.body);
+            newDevice = storage.saveLocalDevice(payload);
         }
         res.json({ success: true, message: 'Device added', device: stripDeviceSecrets(newDevice.toObject ? newDevice.toObject() : newDevice) });
     } catch (err) {
@@ -1127,14 +1132,16 @@ app.post('/api/devices', async (req, res) => {
 
 app.put('/api/devices/:id', async (req, res) => {
     try {
-        const clashError = await deviceIpClashError(req.body, req.params.id);
+        // Sama seperti POST: `status` dari klien diabaikan (hasil pengukuran).
+        const payload = withoutMeasuredStatus(req.body);
+        const clashError = await deviceIpClashError(payload, req.params.id);
         if (clashError) return res.status(409).json({ success: false, error: clashError });
 
         let updatedDevice;
         if (mongoose.connection.readyState === 1) {
-            updatedDevice = await Device.findByIdAndUpdate(req.params.id, req.body, { new: true });
+            updatedDevice = await Device.findByIdAndUpdate(req.params.id, payload, { new: true });
         } else {
-            updatedDevice = storage.updateLocalDevice(req.params.id, req.body);
+            updatedDevice = storage.updateLocalDevice(req.params.id, payload);
         }
         res.json({ success: true, message: 'Device updated', device: stripDeviceSecrets(updatedDevice && updatedDevice.toObject ? updatedDevice.toObject() : updatedDevice) });
     } catch (err) {
