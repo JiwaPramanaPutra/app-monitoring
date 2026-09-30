@@ -49,3 +49,39 @@
 :host ::ng-deep .modal-overlay {
   z-index: 1000 !important;
 }
+
+/* Pencarian perangkat: lebar tetap di desktop, penuh di HP.
+   `input.` supaya menang dari aturan global `input[type='text']` (width:100%). */
+input.device-search {
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 24px 5px 8px;
+  font-size: 11.5px;
+  font-family: 'Work Sans', sans-serif;
+  width: 200px;
+}
+
+/* Grid info 2 kolom di modal perangkat -> 1 kolom di HP. */
+.modal-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+@media (max-width: 640px) {
+  input.device-search {
+    width: 100%;
+  }
+
+  .modal-grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  .toast-card {
+    left: 16px;
+    right: 16px;
+    min-width: 0;
+    max-width: none;
+  }
+}

@@ -57,7 +57,7 @@
   border-radius: 10px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.12);
   min-width: 260px;
-  max-width: 340px;
+  max-width: min(340px, calc(100vw - 32px));
   padding: 6px;
   animation: fadeSlide 0.15s ease;
   z-index: 1000;

@@ -25,7 +25,7 @@
     </div>
 
     <!-- Site dropdown -->
-    <div class="no-print" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+    <div class="no-print" style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
       <app-site-dropdown
         [selectedLabel]="selectedSiteLabel"
         (siteSelected)="onSiteDropdownSelected($event)">
@@ -37,7 +37,7 @@
     <div class="card no-print" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
         <!-- Left side: Periode buttons -->
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div style="font-size:12px;font-weight:500;white-space:nowrap;">Periode laporan:</div>
           <div style="display:flex;gap:6px;">
             <button *ngFor="let period of periods.slice(0, 4)"
@@ -51,18 +51,18 @@
         </div>
 
         <!-- Right side: Rentang manual -->
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <div style="font-size:12px;color:var(--muted);white-space:nowrap;">Rentang manual:</div>
           <input type="date"
                  [(ngModel)]="startDate"
                  [max]="today"
-                 style="border:0.5px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;font-family:'Work Sans',sans-serif;width:140px;">
+                 class="range-date">
           <span style="color:var(--muted);font-size:12px;">—</span>
           <input type="date"
                  [(ngModel)]="endDate"
                  [min]="startDate"
                  [max]="today"
-                 style="border:0.5px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;font-family:'Work Sans',sans-serif;width:140px;">
+                 class="range-date">
           <button (click)="applyCustomRange()" class="btn" style="padding:5px 16px;font-size:12px;white-space:nowrap;">
             Terapkan
           </button>
@@ -75,6 +75,7 @@
       <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);">
         <div style="font-size:12px;font-weight:500;">Ringkasan uptime per site <span style="font-weight:400;color:var(--muted);">· {{ getPeriodLabel() }}</span></div>
       </div>
+      <div class="table-scroll table-scroll--wide">
       <table>
         <tr>
           <th>Site</th>
@@ -105,12 +106,13 @@
           <td class="mono" style="font-size:10.5px;" [style.color]="item.lastRecover === '—' ? '#C4442E' : 'inherit'">{{ item.lastRecover }}</td>
         </tr>
       </table>
+      </div>
     </div>
 
     <!-- Bandwidth trend chart -->
     <div class="card" style="margin-bottom:14px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <div style="font-size:12px;font-weight:500;display:flex;align-items:center;gap:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:12px;font-weight:500;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span>Trend bandwidth <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ selectedPeriod }}</span></span>
           <span *ngIf="isLiveRouterConnected" class="badge badge-ok" style="font-size:10px;padding:1px 6px;">
             Live MikroTik Terhubung
@@ -239,7 +241,8 @@
       <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);">
         <div style="font-size:12px;font-weight:500;">Log riwayat downtime <span style="font-weight:400;color:var(--muted);">· {{ selectedSite }} · {{ getPeriodLabel() }}</span></div>
       </div>
-      <table *ngIf="downtimeLog.length > 0">
+      <div class="table-scroll" *ngIf="downtimeLog.length > 0">
+      <table>
         <tr>
           <th>Site</th>
           <th>Jenis</th>
@@ -266,6 +269,7 @@
           </td>
         </tr>
       </table>
+      </div>
       <div *ngIf="downtimeLog.length === 0" style="padding:24px;text-align:center;color:var(--muted);font-size:12px;">
         Tidak ada downtime pada periode ini
       </div>

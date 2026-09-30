@@ -12,6 +12,51 @@
   gap: 10px;
 }
 
+/* Baris filter: wrap di layar sempit; tiap kontrol full-width di HP. */
+.report-filters {
+  padding: 10px 16px;
+  border-bottom: 0.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.report-filters .report-search,
+.report-filters .report-type {
+  border: 0.5px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  font-family: 'Work Sans', sans-serif;
+}
+
+.report-filters .report-search {
+  width: 220px;
+}
+
+.report-filters .report-type {
+  width: 160px;
+}
+
+@media (max-width: 640px) {
+  /* Komponen dimuat setelah styles.css: media ini yang menang, bukan yang global. */
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .report-filters .report-search,
+  .report-filters .report-type {
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .laporan-modal .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Toast Notification */
 .toast-notification {
   position: fixed;
@@ -41,4 +86,11 @@
 .toast-notification.error {
   border-color: #fca5a5;
   background: #fff1f1;
+}
+
+@media (max-width: 640px) {
+  .toast-notification {
+    max-width: calc(100vw - 32px);
+    white-space: normal;
+  }
 }

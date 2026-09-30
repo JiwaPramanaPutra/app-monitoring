@@ -151,6 +151,7 @@ textarea:focus {
   display: none;
   align-items: center;
   justify-content: center;
+  padding: 16px;
   z-index: 100;
 }
 
@@ -216,6 +217,7 @@ textarea:focus {
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
   margin-top: 20px;
   padding-top: 16px;
   border-top: 0.5px solid var(--border);
@@ -334,6 +336,27 @@ textarea:focus {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Tabel lebar di layar sempit: bungkus dengan .table-scroll agar bisa digeser,
+   tabelnya sendiri diberi lebar minimum supaya kolom tidak tergencet. */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll > table {
+  min-width: 600px;
+}
+
+.table-scroll--wide > table {
+  min-width: 780px;
+}
+
+.table-scroll th {
+  white-space: nowrap;
 }
 
 /* App shell */
@@ -346,6 +369,7 @@ textarea:focus {
   margin-left: 212px;
   padding: 20px 24px;
   flex: 1;
+  min-width: 0;
 }
 
 /* Sidebar */
@@ -452,13 +476,15 @@ textarea:focus {
 /* Responsive */
 @media (max-width: 720px) {
   .sidebar {
-    position: relative;
+    position: sticky;
+    top: 0;
     width: 100%;
     bottom: auto;
     flex-direction: row;
     align-items: center;
-    padding: 10px 12px;
+    padding: 8px 10px;
     overflow-x: auto;
+    z-index: 90;
   }
 
   .sidebar .brand {
@@ -474,8 +500,11 @@ textarea:focus {
 
   .nav-item {
     white-space: nowrap;
+    padding: 8px 10px;
+    font-size: 12.5px;
     margin-bottom: 0;
     margin-right: 4px;
+    width: auto;
   }
 
   .sidebar-footer {
@@ -484,11 +513,39 @@ textarea:focus {
 
   .main {
     margin-left: 0;
-    padding: 16px;
+    padding: 14px;
   }
 
   #app-shell {
     flex-direction: column;
+  }
+}
+
+/* Form 2/3 kolom turun menjadi satu kolom di layar HP */
+@media (max-width: 640px) {
+  .form-row,
+  .form-row-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row-3 .form-group-wide {
+    grid-column: auto;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-box {
+    padding: 16px;
+    border-radius: 10px;
+    max-height: calc(100vh - 24px);
+  }
+}
+
+@media (max-width: 600px) {
+  .main {
+    padding: 12px;
   }
 }
 
@@ -519,6 +576,7 @@ textarea:focus {
   align-items: center;
   justify-content: center;
   min-height: 100vh;
+  padding: 16px;
   background: var(--paper);
 }
 
@@ -611,6 +669,13 @@ textarea:focus {
   /* Grafik trend: jangan terpotong oleh overflow-x:auto saat dicetak. */
   .main [style*='overflow-x'] {
     overflow: visible !important;
+  }
+
+  /* Tabel yang dibungkus .table-scroll juga tidak boleh terpotong di cetakan. */
+  .table-scroll,
+  .table-scroll > table {
+    overflow: visible !important;
+    min-width: 0 !important;
   }
 
   table {

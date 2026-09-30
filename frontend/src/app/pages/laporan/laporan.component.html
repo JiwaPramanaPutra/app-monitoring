@@ -20,9 +20,9 @@
     </div>
 
     <div class="card" style="padding:0;overflow:hidden;">
-      <div style="padding:10px 16px;border-bottom:0.5px solid var(--border);display:flex;align-items:center;gap:8px;">
-        <input type="text" [(ngModel)]="searchText" (keyup.enter)="loadReports()" placeholder="Cari masalah / tindakan..." style="width:220px;border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
-        <select [(ngModel)]="filterType" (change)="loadReports()" style="width:160px;border:0.5px solid var(--border);border-radius:6px;padding:4px 8px;font-size:11.5px;font-family:'Work Sans',sans-serif;">
+      <div class="report-filters">
+        <input type="text" [(ngModel)]="searchText" (keyup.enter)="loadReports()" placeholder="Cari masalah / tindakan..." class="report-search">
+        <select [(ngModel)]="filterType" (change)="loadReports()" class="report-type">
           <option value="">Semua jenis</option>
           <option value="Jaringan">Jaringan</option>
           <option value="Printer / komputer">Printer / komputer</option>
@@ -31,7 +31,7 @@
         <button type="button" class="btn btn-outline" style="padding:5px 10px;font-size:11.5px;" (click)="loadReports()">Cari</button>
       </div>
 
-      <div style="overflow-x:auto;">
+      <div class="table-scroll table-scroll--wide">
         <table *ngIf="reports.length > 0">
           <tr>
             <th>Tanggal</th>

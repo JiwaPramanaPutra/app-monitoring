@@ -465,4 +465,15 @@ Re-examined at target 31cc9a0 (2026-09-29, independent automatic review): this f
 **Why it matters:** The media query defines `.dashboard-grid-2 { grid-template-columns: 60% 1fr; }`, but the template only uses `dashboard-grid-4` and `dashboard-grid-3`. The rule is unreachable and adds noise; it is leftover from an earlier layout.
 **Suggested fix:** Remove the `.dashboard-grid-2` block.
 **Resolution:**
+Re-examined at target 1ff07a1 (2026-09-30, independent automatic review): the delta only adds `flex-wrap: wrap` to `.header-actions` in the same file; the `.dashboard-grid-2` block at :313-317 is still present and still unused. Status stays `open` (P3).
+
+
+### F-105 [P3] open - `.table-scroll th` nowrap rule is not reset for print output
+
+**File:** frontend/src/styles.css:358; frontend/src/styles.css:613-679
+**Found:** 2026-09-30 by /audit independent current (scope: current; lens: quality)
+**Why it matters:** The new `.table-scroll th { white-space: nowrap; }` utility applies globally, including inside `@media print`. Pre-change tables had no such rule, so headers could wrap to fit narrow printed pages. Now printed tables whose headers are wrapped by `.table-scroll` cannot wrap, which can widen columns and push content beyond the page edge. The existing print block resets `overflow` and `min-width` for `.table-scroll` but not `white-space`, so the regression is not prevented.
+**Suggested fix:** Add `.table-scroll th { white-space: normal; }` inside the `@media print` block so printed table headers behave as before; no current requirement is lost.
+**Resolution:**
+Open.
 
