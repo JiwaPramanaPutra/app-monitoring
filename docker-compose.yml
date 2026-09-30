@@ -38,7 +38,10 @@ services:
     build: ./frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      # Port host bisa diatur lewat FRONTEND_PORT (default 80).
+      # Di server yang sudah punya nginx host, pakai loopback, mis.:
+      #   FRONTEND_PORT=127.0.0.1:8081
+      - "${FRONTEND_PORT:-80}:80"
     depends_on:
       - backend
 

@@ -68,6 +68,9 @@ Buka `http://localhost`.
   `.env` di root project sebelum `docker compose up`.
 - Data JSON lokal backend tersimpan di `backend/data/` (volume), data MongoDB di
   volume `mongo-data`.
+- Port publik frontend mengikuti `FRONTEND_PORT` (default `80`). Di server yang
+  sudah menjalankan nginx host, set `FRONTEND_PORT=127.0.0.1:8081` lalu proxy
+  dari nginx ke port tersebut.
 
 ## Konfigurasi
 
